@@ -15,9 +15,9 @@ use crate::hcscoder_openrouter::auth;
 const USER_AGENT: &str = concat!(
     "hcscoder/",
     env!("CARGO_PKG_VERSION"),
-    " (hcsmedia; +https://github.com/hcsmedia/hcscoder)"
+    " (hcsmedia; +https://github.com/hcsmediacorp/hcscoder)"
 );
-const REFERER: &str = "https://github.com/hcsmedia/hcscoder";
+const REFERER: &str = "https://github.com/hcsmediacorp/hcscoder";
 /// OpenRouter optional attribution (`X-Title` / `X-OpenRouter-Title`).
 const APP_TITLE: &str = "hcscoder by hcsmedia";
 

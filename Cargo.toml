@@ -5,7 +5,7 @@ edition = "2021"
 authors = ["hcsmedia (Tim) <hcsmediagroup@gmail.com>"]
 description = "High-performance AI coding assistant by hcsmedia - Privacy-first, OpenRouter-powered"
 license = "MIT"
-repository = "https://github.com/hcsmedia/hcscoder"
+repository = "https://github.com/hcsmediacorp/hcscoder"
 keywords = ["cli", "ai", "coding", "openrouter", "privacy"]
 categories = ["development-tools", "command-line-utilities"]
 

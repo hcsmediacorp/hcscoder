@@ -24,4 +24,4 @@ First major release on GitHub: **hcscoder** as a **Rust-native** OpenRouter CLI.
 - **README** — one-click **Windows** (`install.ps1`) and **Linux/macOS** (`install.sh`) flows; build-from-source instructions for all platforms.
 - **MIT License** — copyright **hcsmedia**; attribution required on redistribution (see `LICENSE`).
 
-[1.0.0]: https://github.com/hcsmedia/hcscoder/releases/tag/v1.0.0
+[1.0.0]: https://github.com/hcsmediacorp/hcscoder/releases/tag/v1.0.0

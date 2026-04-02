@@ -25,7 +25,7 @@ pub async fn web_search(query: &str) -> Result<Vec<SearchResult>> {
 
     let text = client
         .get(&url)
-        .header("HTTP-Referer", "https://github.com/hcsmedia/hcscoder")
+        .header("HTTP-Referer", "https://github.com/hcsmediacorp/hcscoder")
         .header("X-Title", "hcscoder")
         .send()
         .await
@@ -88,7 +88,7 @@ pub async fn fetch_url(url: &str) -> Result<String> {
 
     let resp = client
         .get(url)
-        .header("HTTP-Referer", "https://github.com/hcsmedia/hcscoder")
+        .header("HTTP-Referer", "https://github.com/hcsmediacorp/hcscoder")
         .header("X-Title", "hcscoder")
         .send()
         .await

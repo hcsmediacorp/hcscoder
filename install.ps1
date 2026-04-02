@@ -2,7 +2,7 @@
 # 
 # This script installs hcscoder to %APPDATA%\hcscoder and adds it to PATH.
 #
-# Usage: iwr -useb https://raw.githubusercontent.com/hcsmedia/hcscoder/main/install.ps1 | iex
+# Usage: iwr -useb https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.ps1 | iex
 #
 # MIT License (c) 2026 hcsmedia
 # Attribution to hcsmedia is mandatory for all modifications and distributions.
@@ -62,7 +62,7 @@ function Write-Error-Custom {
 }
 
 # Configuration
-$Repo = "hcsmedia/hcscoder"
+$Repo = "hcsmediacorp/hcscoder"
 $InstallDir = if ($Local) { 
     "$env:APPDATA\hcscoder\bin" 
 } else { 

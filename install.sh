@@ -4,10 +4,10 @@
 # This script installs hcscoder to /usr/local/bin (or $HOME/.local/bin)
 # and sets up the configuration directory.
 #
-# Usage: curl -fsSL https://raw.githubusercontent.com/hcsmedia/hcscoder/main/install.sh | bash
+# Usage: curl -fsSL https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.sh | bash
 #
 # Build from source instead (100% Rust, no GitHub release binary required):
-#   git clone https://github.com/hcsmedia/hcscoder.git && cd hcscoder
+#   git clone https://github.com/hcsmediacorp/hcscoder.git && cd hcscoder
 #   cargo install --path . --locked
 #   hcscoder-setup && hcscoder chat
 #
@@ -24,7 +24,7 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Configuration
-REPO="hcsmedia/hcscoder"
+REPO="hcsmediacorp/hcscoder"
 INSTALL_DIR="/usr/local/bin"
 LOCAL_INSTALL_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/hcscoder"

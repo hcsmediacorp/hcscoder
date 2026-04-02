@@ -7,13 +7,13 @@
 | **Version** | **1.0.0** — first major Rust release ([CHANGELOG](CHANGELOG.md)) |
 | **License** | MIT (c) 2026 **hcsmedia** — **attribution is mandatory** when you redistribute (see [LICENSE](LICENSE)). |
 | **Contact** | Instagram [@timfromhcs](https://www.instagram.com/timfromhcs/) · Email [hcsmediagroup@gmail.com](mailto:hcsmediagroup@gmail.com) |
-| **Repository** | [github.com/hcsmedia/hcscoder](https://github.com/hcsmedia/hcscoder) |
+| **Repository** | [github.com/hcsmediacorp/hcscoder](https://github.com/hcsmediacorp/hcscoder) |
 
 ---
 
 ## One-click install (release binaries)
 
-[Latest GitHub release (v1.0.0+)](https://github.com/hcsmedia/hcscoder/releases/latest) ships **Windows x86_64** builds: download **`hcscoder.exe`** (main CLI) and **`hcscoder-setup.exe`** (secure API key + default model), or use the mirrored copies under [`releases/`](releases/) in this repository.
+[Latest GitHub release (v1.0.0+)](https://github.com/hcsmediacorp/hcscoder/releases/latest) ships **Windows x86_64** builds: download **`hcscoder.exe`** (main CLI) and **`hcscoder-setup.exe`** (secure API key + default model), or use the mirrored copies under [`releases/`](releases/) in this repository.
 
 When release assets are attached on GitHub, you can also use the installers (PATH + default config template):
 
@@ -21,16 +21,16 @@ When release assets are attached on GitHub, you can also use the installers (PAT
 
 ```powershell
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
-iwr -useb https://raw.githubusercontent.com/hcsmedia/hcscoder/main/install.ps1 -OutFile install.ps1
+iwr -useb https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Local
 ```
 
 **Linux / macOS:**
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hcsmedia/hcscoder/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.sh | bash
 # User install (no sudo):
-curl -fsSL https://raw.githubusercontent.com/hcsmedia/hcscoder/main/install.sh | bash -s -- --local
+curl -fsSL https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.sh | bash -s -- --local
 ```
 
 Then set your OpenRouter API key and run `hcscoder-setup` or `export OPENROUTER_API_KEY=...` as described below.
@@ -65,7 +65,7 @@ This is the recommended path for developers and for **100% Rust** workflows.
 # Install Rust if needed: https://rustup.rs/
 rustup default stable
 
-git clone https://github.com/hcsmedia/hcscoder.git
+git clone https://github.com/hcsmediacorp/hcscoder.git
 cd hcscoder
 
 cargo build --release
@@ -90,7 +90,7 @@ hcscoder chat
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 source "$HOME/.cargo/env"
 
-git clone https://github.com/hcsmedia/hcscoder.git
+git clone https://github.com/hcsmediacorp/hcscoder.git
 cd hcscoder
 cargo build --release
 ./target/release/hcscoder-setup
