@@ -1,5 +1,9 @@
 # hcscoder
 
+[![Latest release](https://img.shields.io/github/v/release/hcsmediacorp/hcscoder?label=release)](https://github.com/hcsmediacorp/hcscoder/releases/latest)
+[![CI](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml)
+[![Release workflow](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml)
+
 **hcscoder** is a privacy-first, **Rust-native** CLI coding assistant powered by [OpenRouter](https://openrouter.ai/). It runs on your machine, stores API keys locally, and does **not** ship telemetry or phone-home analytics.
 
 | Topic | Details |
@@ -13,9 +17,11 @@
 
 ## One-click install (release binaries)
 
-[Latest GitHub release (v1.0.0+)](https://github.com/hcsmediacorp/hcscoder/releases/latest) ships **Windows x86_64** builds: download **`hcscoder.exe`** (main CLI) and **`hcscoder-setup.exe`** (secure API key + default model), or use the mirrored copies under [`releases/`](releases/) in this repository.
+**Prebuilt archives:** On each [release](https://github.com/hcsmediacorp/hcscoder/releases), download **`hcscoder-vX.Y.Z-windows-x86_64.zip`** (exes + `install.ps1`) or **`hcscoder-vX.Y.Z-linux-x86_64.tar.gz`** (ELF binaries + `install.sh`). These are produced by the [Release](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml) workflow.
 
-When release assets are attached on GitHub, you can also use the installers (PATH + default config template):
+You can also grab **`hcscoder.exe`** / **`hcscoder-setup.exe`** from [`releases/`](releases/) on `main`, or use **latest** on the releases page.
+
+When release assets are on GitHub, you can use the installers (PATH + config template) via raw scripts:
 
 **Windows (PowerShell, run as Administrator only if you install system-wide):**
 
@@ -172,6 +178,11 @@ cargo build --release
 ```
 
 The library crate is built with **`#![deny(warnings)]`** — keep the tree warning-free.
+
+### GitHub Releases (maintainers)
+
+- **Automatic:** Pushing a new annotated tag `v*` on `main` triggers **Release** — it builds Windows + Linux binaries and creates/updates the GitHub Release with archives.
+- **Manual (e.g. first time for an old tag):** [Actions → Release](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml) → **Run workflow** → set tag to `v1.0.0` (must already exist) → Run. This publishes the same zip/tar.gz assets without re-tagging.
 
 ### Git / VS Code: `Repository not found` on push
 
