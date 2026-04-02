@@ -17,9 +17,59 @@ const USER_AGENT: &str = concat!(
     env!("CARGO_PKG_VERSION"),
     " (hcsmedia; +https://github.com/hcsmediacorp/hcscoder)"
 );
+/// Public source repo (OpenRouter `HTTP-Referer` / attribution).
 const REFERER: &str = "https://github.com/hcsmediacorp/hcscoder";
 /// OpenRouter optional attribution (`X-Title` / `X-OpenRouter-Title`).
 const APP_TITLE: &str = "hcscoder by hcsmedia";
+
+/// Extract a short user-facing message from OpenRouter JSON error bodies (falls back to truncated raw text).
+fn summarize_error_response_body(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return "(no response body)".to_string();
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
+        if let Some(m) = v
+            .pointer("/error/message")
+            .or_else(|| v.get("message"))
+            .and_then(|x| x.as_str())
+        {
+            return m.to_string();
+        }
+    }
+    const MAX: usize = 400;
+    let count = trimmed.chars().count();
+    if count > MAX {
+        trimmed.chars().take(MAX).collect::<String>() + "…"
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn friendly_http_error(status: u16, body_summary: String) -> String {
+    let detail = if body_summary.is_empty() {
+        "(no details)".to_string()
+    } else {
+        body_summary
+    };
+    match status {
+        401 => format!(
+            "OpenRouter authentication failed (401). Check OPENROUTER_API_KEY or ~/.hcscoder/openrouter_api_key. {}",
+            detail
+        ),
+        402 => format!(
+            "OpenRouter credits or billing issue (402). Add credits at https://openrouter.ai/ or use a model id with the :free suffix. {}",
+            detail
+        ),
+        429 => format!(
+            "OpenRouter rate limit (429). Wait and retry, lower request volume, or try a :free model. {}",
+            detail
+        ),
+        502 => format!("OpenRouter bad gateway (502). Retry later. {}", detail),
+        503 => format!("OpenRouter service unavailable (503). Retry later. {}", detail),
+        _ => format!("OpenRouter HTTP error ({status}). {}", detail),
+    }
+}
 
 /// OpenRouter API client
 #[derive(Debug, Clone)]
@@ -253,18 +303,9 @@ impl HcscoderApiClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("(body read error: {})", e));
-            let error_msg = match status.as_u16() {
-                401 => format!("Authentication failed (401): {}", error_text),
-                402 => format!(
-                    "Payment required / insufficient credits (402): {}",
-                    error_text
-                ),
-                429 => format!("Rate limited (429): {}", error_text),
-                502 => format!("Bad gateway (502): {}", error_text),
-                503 => format!("Service unavailable (503): {}", error_text),
-                _ => format!("OpenRouter API error ({}): {}", status, error_text),
-            };
-            bail!("{}", error_msg);
+            let code = status.as_u16();
+            let summary = summarize_error_response_body(&error_text);
+            bail!("{}", friendly_http_error(code, summary));
         }
         response
             .json::<ChatCompletionResponse>()
@@ -281,18 +322,9 @@ impl HcscoderApiClient {
                 .text()
                 .await
                 .unwrap_or_else(|e| format!("(body read error: {})", e));
-            let error_msg = match status.as_u16() {
-                401 => format!("Authentication failed (401): {}", error_text),
-                402 => format!(
-                    "Payment required / insufficient credits (402): {}",
-                    error_text
-                ),
-                429 => format!("Rate limited (429): {}", error_text),
-                502 => format!("Bad gateway (502): {}", error_text),
-                503 => format!("Service unavailable (503): {}", error_text),
-                _ => format!("OpenRouter API error ({}): {}", status, error_text),
-            };
-            bail!("{}", error_msg);
+            let code = status.as_u16();
+            let summary = summarize_error_response_body(&error_text);
+            bail!("{}", friendly_http_error(code, summary));
         }
 
         let mut byte_stream = response.bytes_stream();
@@ -377,5 +409,70 @@ impl HcscoderApiClient {
 
     pub fn model(&self) -> &str {
         &self.model
+    }
+}
+
+#[cfg(test)]
+mod post_release_audit {
+    // #region agent log
+    use super::{friendly_http_error, summarize_error_response_body, APP_TITLE, REFERER};
+    use std::io::Write;
+
+    fn append_agent_ndjson(payload: &str) {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("debug-e5cd16.log");
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)
+        {
+            let _ = writeln!(f, "{}", payload);
+        }
+    }
+    // #endregion
+
+    #[test]
+    fn audit_openrouter_headers_match_spec() {
+        assert_eq!(APP_TITLE, "hcscoder by hcsmedia");
+        assert_eq!(
+            REFERER,
+            "https://github.com/hcsmediacorp/hcscoder",
+            "canonical public repo URL for attribution"
+        );
+        // #region agent log
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let line = format!(
+            r#"{{"sessionId":"e5cd16","runId":"audit","hypothesisId":"H1","location":"client.rs:post_release_audit","message":"title and referer constants","data":{{"APP_TITLE":"{}","REFERER":"{}"}},"timestamp":{}}}"#,
+            APP_TITLE, REFERER, ts
+        );
+        append_agent_ndjson(&line);
+        // #endregion
+    }
+
+    #[test]
+    fn error_body_json_becomes_short_message() {
+        let raw = r#"{"error":{"message":"Insufficient credits"}}"#;
+        assert_eq!(
+            summarize_error_response_body(raw),
+            "Insufficient credits"
+        );
+        let friendly = friendly_http_error(402, summarize_error_response_body(raw));
+        assert!(
+            friendly.contains("402"),
+            "{}",
+            friendly
+        );
+        assert!(
+            friendly.contains("Insufficient credits"),
+            "{}",
+            friendly
+        );
+        assert!(
+            !friendly.contains("\"error\""),
+            "should not echo raw JSON: {}",
+            friendly
+        );
     }
 }

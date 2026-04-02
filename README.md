@@ -29,6 +29,8 @@ When release assets are on GitHub, you can use the installers (PATH + config tem
 Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 iwr -useb https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Local
+# Optional: pin a release version (must exist on GitHub Releases):
+# .\install.ps1 -Local -Version 1.0.0
 ```
 
 **Linux / macOS:**
