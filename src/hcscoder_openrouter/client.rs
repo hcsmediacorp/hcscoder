@@ -414,21 +414,7 @@ impl HcscoderApiClient {
 
 #[cfg(test)]
 mod post_release_audit {
-    // #region agent log
     use super::{friendly_http_error, summarize_error_response_body, APP_TITLE, REFERER};
-    use std::io::Write;
-
-    fn append_agent_ndjson(payload: &str) {
-        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("debug-e5cd16.log");
-        if let Ok(mut f) = std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(path)
-        {
-            let _ = writeln!(f, "{}", payload);
-        }
-    }
-    // #endregion
 
     #[test]
     fn audit_openrouter_headers_match_spec() {
@@ -438,17 +424,6 @@ mod post_release_audit {
             "https://github.com/hcsmediacorp/hcscoder",
             "canonical public repo URL for attribution"
         );
-        // #region agent log
-        let ts = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_millis())
-            .unwrap_or(0);
-        let line = format!(
-            r#"{{"sessionId":"e5cd16","runId":"audit","hypothesisId":"H1","location":"client.rs:post_release_audit","message":"title and referer constants","data":{{"APP_TITLE":"{}","REFERER":"{}"}},"timestamp":{}}}"#,
-            APP_TITLE, REFERER, ts
-        );
-        append_agent_ndjson(&line);
-        // #endregion
     }
 
     #[test]
