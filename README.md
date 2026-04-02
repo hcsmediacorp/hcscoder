@@ -173,6 +173,32 @@ cargo build --release
 
 The library crate is built with **`#![deny(warnings)]`** — keep the tree warning-free.
 
+### Git / VS Code: `Repository not found` on push
+
+If `git push -u origin main` fails with **remote: Repository not found**, the problem is not your local tree—it is the **GitHub side or authentication**:
+
+1. **Create the repository** on GitHub (e.g. [github.com/new](https://github.com/new)) under the account/org you use. Name it `hcscoder` (or your chosen name). **Do not** initialize with a README/license if you are pushing this repo’s existing history for the first time.
+2. **Match the remote URL** to that repo:
+
+   ```bash
+   git remote set-url origin https://github.com/<OWNER>/hcscoder.git
+   ```
+
+3. **Authenticate:** On Windows, sign in when Git Credential Manager prompts you, or use a [personal access token](https://github.com/settings/tokens) with **repo** scope for HTTPS. Alternatively switch to SSH:
+
+   ```bash
+   git remote set-url origin git@github.com:<OWNER>/hcscoder.git
+   ```
+
+4. Push branch and tag:
+
+   ```bash
+   git push -u origin main
+   git push origin v1.0.0
+   ```
+
+This repo sets **`push.autoSetupRemote = true`** locally so a plain `git push` can set upstream once the remote exists and credentials work.
+
 ---
 
 ## Architecture (Rust)
