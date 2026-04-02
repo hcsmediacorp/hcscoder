@@ -1,0 +1,381 @@
+//! OpenRouter HTTP client — streaming SSE, attribution headers, timeouts.
+
+use std::pin::Pin;
+use std::time::Duration;
+
+use anyhow::{bail, Context, Result};
+use futures_util::stream::StreamExt;
+use reqwest::{Client as ReqwestClient, Response};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use tokio_stream::Stream;
+
+use crate::hcscoder_openrouter::auth;
+
+const USER_AGENT: &str = concat!(
+    "hcscoder/",
+    env!("CARGO_PKG_VERSION"),
+    " (hcsmedia; +https://github.com/hcsmedia/hcscoder)"
+);
+const REFERER: &str = "https://github.com/hcsmedia/hcscoder";
+/// OpenRouter optional attribution (`X-Title` / `X-OpenRouter-Title`).
+const APP_TITLE: &str = "hcscoder by hcsmedia";
+
+/// OpenRouter API client
+#[derive(Debug, Clone)]
+pub struct HcscoderApiClient {
+    client: ReqwestClient,
+    api_key: String,
+    base_url: String,
+    model: String,
+    timeout_secs: u64,
+    /// When set, request body includes `models` + `route: "fallback"` per OpenRouter.
+    fallback_models: Option<Vec<String>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum MessageRole {
+    User,
+    Assistant,
+    System,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatMessage {
+    pub role: MessageRole,
+    pub content: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct HcscoderUsage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ChatCompletionResponse {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<Choice>,
+    pub usage: Option<HcscoderUsage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Choice {
+    pub index: u32,
+    pub message: ChatMessage,
+    pub finish_reason: Option<String>,
+}
+
+/// Streaming chunk (also parse via [`serde_json::Value`] for mid-stream `error` fields).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct ChatCompletionChunk {
+    pub id: String,
+    pub model: String,
+    pub choices: Vec<ChunkChoice>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct ChunkChoice {
+    pub index: u32,
+    pub delta: Delta,
+    pub finish_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[allow(dead_code)]
+pub struct Delta {
+    pub role: Option<String>,
+    pub content: Option<String>,
+}
+
+fn build_http_client(timeout_secs: u64) -> Result<ReqwestClient> {
+    ReqwestClient::builder()
+        .user_agent(USER_AGENT)
+        .timeout(Duration::from_secs(timeout_secs))
+        .connect_timeout(Duration::from_secs(30))
+        .pool_idle_timeout(Duration::from_secs(90))
+        .build()
+        .context("failed to build reqwest HTTP client")
+}
+
+impl HcscoderApiClient {
+    pub fn new(model: String) -> Result<Self> {
+        let api_key = auth::get_api_key()?;
+        let timeout_secs = 60;
+        let client = build_http_client(timeout_secs)?;
+        Ok(Self {
+            client,
+            api_key,
+            base_url: "https://openrouter.ai/api/v1".to_string(),
+            model,
+            timeout_secs,
+            fallback_models: None,
+        })
+    }
+
+    pub fn with_config(model: String, api_key: String, base_url: Option<String>) -> Result<Self> {
+        let timeout_secs = 60;
+        let client = build_http_client(timeout_secs)?;
+        Ok(Self {
+            client,
+            api_key,
+            base_url: base_url.unwrap_or_else(|| "https://openrouter.ai/api/v1".to_string()),
+            model,
+            timeout_secs,
+            fallback_models: None,
+        })
+    }
+
+    /// Request timeout (seconds) used for the HTTP client.
+    #[must_use]
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs
+    }
+
+    /// Chain fallback models (OpenRouter `models` + `route: "fallback"`). Primary `model` is listed first.
+    #[must_use]
+    pub fn with_fallback_models(mut self, extra_models: Vec<String>) -> Self {
+        self.fallback_models = Some(extra_models);
+        self
+    }
+
+    fn apply_model_routing(&self, body: &mut serde_json::Value) {
+        if let Some(extra) = &self.fallback_models {
+            let mut models = vec![self.model.clone()];
+            models.extend(extra.iter().cloned());
+            body["models"] = json!(models);
+            body["route"] = json!("fallback");
+        }
+    }
+
+    fn openrouter_headers(&self, req: reqwest::RequestBuilder) -> reqwest::RequestBuilder {
+        req.header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .header("HTTP-Referer", REFERER)
+            .header("X-Title", APP_TITLE)
+            .header("X-OpenRouter-Title", APP_TITLE)
+            // OpenRouter marketplace category (optional; see App Attribution docs)
+            .header("X-OpenRouter-Categories", "cli-agent")
+    }
+
+    /// Non-streaming completion with bounded retries on transient failures.
+    pub async fn create_completion(
+        &self,
+        messages: Vec<ChatMessage>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<ChatCompletionResponse> {
+        const MAX_RETRIES: u32 = 3;
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            let url = format!("{}/chat/completions", self.base_url);
+            let mut body = json!({
+                "model": self.model,
+                "messages": messages,
+            });
+            if let Some(temp) = temperature {
+                body["temperature"] = json!(temp);
+            }
+            if let Some(tokens) = max_tokens {
+                body["max_tokens"] = json!(tokens);
+            }
+            self.apply_model_routing(&mut body);
+
+            let response = self
+                .openrouter_headers(self.client.post(&url).json(&body))
+                .send()
+                .await
+                .context("failed to send request to OpenRouter")?;
+
+            let status = response.status();
+            let code = status.as_u16();
+            // 401/402: auth/billing — do not retry. 429/502/503: transient — retry.
+            if (code == 429 || code == 502 || code == 503) && attempt < MAX_RETRIES {
+                let delay = Duration::from_millis(200 * u64::from(1u32 << attempt));
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            return self.handle_response(response).await;
+        }
+    }
+
+    pub async fn create_stream(
+        &self,
+        messages: Vec<ChatMessage>,
+        temperature: Option<f32>,
+        max_tokens: Option<u32>,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        const MAX_RETRIES: u32 = 3;
+        let url = format!("{}/chat/completions", self.base_url);
+        let mut attempt = 0u32;
+        loop {
+            attempt += 1;
+            let mut body = json!({
+                "model": self.model,
+                "messages": messages,
+                "stream": true,
+            });
+            if let Some(temp) = temperature {
+                body["temperature"] = json!(temp);
+            }
+            if let Some(tokens) = max_tokens {
+                body["max_tokens"] = json!(tokens);
+            }
+            self.apply_model_routing(&mut body);
+
+            let response = self
+                .openrouter_headers(self.client.post(&url).json(&body))
+                .send()
+                .await
+                .context("failed to send streaming request to OpenRouter")?;
+
+            let status = response.status();
+            let code = status.as_u16();
+            if (code == 429 || code == 502 || code == 503) && attempt < MAX_RETRIES {
+                let delay = Duration::from_millis(200 * u64::from(1u32 << attempt));
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+            return Self::handle_stream(response).await;
+        }
+    }
+
+    async fn handle_response(&self, response: Response) -> Result<ChatCompletionResponse> {
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("(body read error: {})", e));
+            let error_msg = match status.as_u16() {
+                401 => format!("Authentication failed (401): {}", error_text),
+                402 => format!(
+                    "Payment required / insufficient credits (402): {}",
+                    error_text
+                ),
+                429 => format!("Rate limited (429): {}", error_text),
+                502 => format!("Bad gateway (502): {}", error_text),
+                503 => format!("Service unavailable (503): {}", error_text),
+                _ => format!("OpenRouter API error ({}): {}", status, error_text),
+            };
+            bail!("{}", error_msg);
+        }
+        response
+            .json::<ChatCompletionResponse>()
+            .await
+            .context("failed to parse OpenRouter JSON response")
+    }
+
+    async fn handle_stream(
+        response: Response,
+    ) -> Result<Pin<Box<dyn Stream<Item = Result<String>> + Send>>> {
+        let status = response.status();
+        if !status.is_success() {
+            let error_text = response
+                .text()
+                .await
+                .unwrap_or_else(|e| format!("(body read error: {})", e));
+            let error_msg = match status.as_u16() {
+                401 => format!("Authentication failed (401): {}", error_text),
+                402 => format!(
+                    "Payment required / insufficient credits (402): {}",
+                    error_text
+                ),
+                429 => format!("Rate limited (429): {}", error_text),
+                502 => format!("Bad gateway (502): {}", error_text),
+                503 => format!("Service unavailable (503): {}", error_text),
+                _ => format!("OpenRouter API error ({}): {}", status, error_text),
+            };
+            bail!("{}", error_msg);
+        }
+
+        let mut byte_stream = response.bytes_stream();
+        let out = async_stream::stream! {
+            let mut line_buf = String::new();
+            while let Some(chunk) = byte_stream.next().await {
+                match chunk {
+                    Ok(bytes) => {
+                        line_buf.push_str(&String::from_utf8_lossy(&bytes));
+                        loop {
+                            match line_buf.find('\n') {
+                                None => break,
+                                Some(pos) => {
+                                    let line = line_buf[..pos].trim_end_matches('\r').to_string();
+                                    line_buf.drain(..pos + 1);
+                                    if line.is_empty() {
+                                        continue;
+                                    }
+                                    // SSE comment / keep-alive lines (RFC 8895)
+                                    if line.starts_with(':') {
+                                        continue;
+                                    }
+                                    if let Some(data) = line.strip_prefix("data: ") {
+                                        let data = data.trim();
+                                        if data.is_empty() {
+                                            continue;
+                                        }
+                                        if data == "[DONE]" {
+                                            return;
+                                        }
+                                        // Per OpenRouter docs: ignore occasional non-JSON noise; handle mid-stream errors.
+                                        let v: serde_json::Value = match serde_json::from_str(data) {
+                                            Ok(v) => v,
+                                            Err(_) => continue,
+                                        };
+                                        if let Some(err) = v.get("error") {
+                                            let msg = err
+                                                .get("message")
+                                                .and_then(|m| m.as_str())
+                                                .unwrap_or("provider error");
+                                            yield Err(anyhow::anyhow!("OpenRouter stream error: {}", msg));
+                                            return;
+                                        }
+                                        if let Some(choices) = v.get("choices").and_then(|c| c.as_array()) {
+                                            if let Some(fr) = choices
+                                                .first()
+                                                .and_then(|c| c.get("finish_reason"))
+                                                .and_then(|f| f.as_str())
+                                            {
+                                                if fr == "error" {
+                                                    yield Err(anyhow::anyhow!(
+                                                        "OpenRouter stream terminated with finish_reason=error"
+                                                    ));
+                                                    return;
+                                                }
+                                            }
+                                        }
+                                        if let Some(content) = v
+                                            .get("choices")
+                                            .and_then(|c| c.as_array())
+                                            .and_then(|a| a.first())
+                                            .and_then(|ch| ch.get("delta"))
+                                            .and_then(|d| d.get("content"))
+                                            .and_then(|c| c.as_str())
+                                        {
+                                            if !content.is_empty() {
+                                                yield Ok(content.to_string());
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => yield Err(anyhow::anyhow!("stream read: {}", e)),
+                }
+            }
+        };
+
+        Ok(Box::pin(out))
+    }
+
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+}

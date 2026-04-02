@@ -1,0 +1,46 @@
+# Compiled and build artifacts
+*.o
+*.obj
+*.exe
+!releases/hcscoder.exe
+!releases/hcscoder-setup.exe
+*.dll
+*.so
+*.a
+*.out
+target/
+target-test-tmp/
+
+# OS-specific junk
+.DS_Store
+.DS_Store?
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Dependencies
+**/node_modules/
+**/.venv/
+**/venv/
+**/__pycache__/
+**/.mypy_cache/
+**/.pytest_cache/
+**/.gradle/
+
+# Logs and temp files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Environment
+.env
+.env.local
+*.env.*
+
+# Editors
+.vscode/
+.idea/
+
+# Rust specific
+**/target/
