@@ -1,0 +1,98 @@
+# hcscoder Configuration File
+# Location: ~/.hcscoder/config.toml
+
+# OpenRouter API Configuration
+[openrouter]
+# API Key (can also be set via OPENROUTER_API_KEY environment variable)
+# api_key = "sk-or-..."
+
+# Default model to use (can also be set via OPENROUTER_MODEL or --model flag)
+default_model = "anthropic/claude-3.5-haiku"
+
+# Request timeout in seconds
+timeout_secs = 60
+
+# Enable streaming responses (recommended for better UX)
+streaming = true
+
+# UI Configuration
+[ui]
+# Theme: default, dracula, gruvbox, nord, highcontrast
+theme = "default"
+
+# Enable syntax highlighting for code blocks
+syntax_highlighting = true
+
+# Show token usage after each response
+show_token_usage = true
+
+# Terminal color support (auto-detect if not set)
+# color_support = "auto"  # Options: auto, always, never
+
+# Chat Configuration
+[chat]
+# Enable command history in plain mode
+history_enabled = true
+
+# Maximum history size
+history_size = 1000
+
+# Enable auto-completion for commands and file paths
+auto_completion = true
+
+# Show typing indicator while waiting for AI response
+typing_indicator = true
+
+# Security Configuration
+[security]
+# Enable audit logging
+audit_logging = true
+
+# Log file location (empty to disable file logging)
+# log_file = "~/.hcscoder/hcscoder.log"
+
+# Enable path traversal protection (always recommended)
+path_traversal_protection = true
+
+# Enable command injection protection (always recommended)
+command_injection_protection = true
+
+# Block access to sensitive system files
+block_sensitive_files = true
+
+# Memory Configuration
+[memory]
+# Enable conversation memory
+enabled = true
+
+# Maximum conversation history size (in messages)
+max_history_size = 50
+
+# Token limit for context (leave some room for response)
+context_token_limit = 4000
+
+# Performance Configuration
+[performance]
+# Enable LTO (Link Time Optimization) for better performance
+# This is set at compile time, but can be referenced here
+# lto_enabled = true
+
+# Number of worker threads (auto-detected if not set)
+# worker_threads = 4
+
+# Enable response caching
+response_caching = false
+
+# Cache directory (if caching enabled)
+# cache_dir = "~/.hcscoder/cache"
+
+# Buddy System Configuration (Easter Egg)
+[buddy]
+# Enable the buddy gacha system
+enabled = true
+
+# Auto-summon buddy on startup
+auto_summon = false
+
+# Preferred buddy type (random if not set)
+# preferred_buddy = "hcs"
