@@ -1,12 +1,12 @@
 [package]
 name = "hcscoder"
-version = "1.0.0"
+version = "1.1.0-security"
 edition = "2021"
 authors = ["hcsmedia (Tim) <hcsmediagroup@gmail.com>"]
-description = "High-performance AI coding assistant by hcsmedia - Privacy-first, OpenRouter-powered"
+description = "High-performance AI coding assistant by hcsmedia - Privacy-first, OpenRouter-powered (Stable Release)"
 license = "MIT"
 repository = "https://github.com/hcsmediacorp/hcscoder"
-keywords = ["cli", "ai", "coding", "openrouter", "privacy"]
+keywords = ["cli", "ai", "coding", "openrouter", "privacy", "security"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]

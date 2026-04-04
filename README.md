@@ -1,17 +1,32 @@
 # hcscoder
 
-[![Latest release](https://img.shields.io/github/v/release/hcsmediacorp/hcscoder?label=release)](https://github.com/hcsmediacorp/hcscoder/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/hcsmediacorp/hcscoder?label=release&color=blue)](https://github.com/hcsmediacorp/hcscoder/releases/latest)
 [![CI](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml)
 [![Release workflow](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 **hcscoder** is a privacy-first, **Rust-native** CLI coding assistant powered by [OpenRouter](https://openrouter.ai/). It runs on your machine, stores API keys locally, and does **not** ship telemetry or phone-home analytics.
 
 | Topic | Details |
 |--------|---------|
-| **Version** | **1.0.0** — first major Rust release ([CHANGELOG](CHANGELOG.md)) |
+| **Version** | **1.1.0-security** — Security hardening release ([CHANGELOG](CHANGELOG.md)) |
+| **Status** | ✅ **Stable Release** — Production ready |
 | **License** | MIT (c) 2026 **hcsmedia** — **attribution is mandatory** when you redistribute (see [LICENSE](LICENSE)). |
 | **Contact** | Instagram [@timfromhcs](https://www.instagram.com/timfromhcs/) · Email [hcsmediagroup@gmail.com](mailto:hcsmediagroup@gmail.com) |
 | **Repository** | [github.com/hcsmediacorp/hcscoder](https://github.com/hcsmediacorp/hcscoder) |
+
+---
+
+## ✨ Features
+
+- 🔒 **Security First** — Enhanced API key validation, path traversal prevention, command injection protection
+- 🚀 **High Performance** — Built with Rust for speed and reliability
+- 🎨 **5 UI Themes** — Default, Dracula, Gruvbox, Nord, HighContrast
+- 🛠️ **40+ Tools** — Shell execution, filesystem operations, web search, git introspection, and more
+- 📡 **SSE Streaming** — Real-time AI responses with robust error handling
+- 🌐 **OpenRouter Compliant** — Full attribution headers, model catalog support
+- 🧠 **Smart Context** — Conversation memory with token estimation
+- 🎯 **Privacy Focused** — Zero telemetry, local API key storage
 
 ---
 
@@ -30,7 +45,7 @@ Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
 iwr -useb https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.ps1 -OutFile install.ps1
 .\install.ps1 -Local
 # Optional: pin a release version (must exist on GitHub Releases):
-# .\install.ps1 -Local -Version 1.0.0
+# .\install.ps1 -Local -Version 1.1.0
 ```
 
 **Linux / macOS:**
@@ -53,6 +68,12 @@ Then set your OpenRouter API key and run `hcscoder-setup` or `export OPENROUTER_
 - **Attribution headers** on every request: `HTTP-Referer`, `X-Title`, `X-OpenRouter-Title`, optional `X-OpenRouter-Categories` (`cli-agent`), plus a clear `User-Agent`.
 - **Configurable model**: CLI `--model` → `OPENROUTER_MODEL` → `~/.hcscoder/openrouter_default_model` (from **hcscoder-setup**) → built-in default.
 - **Secure API key setup**: `hcscoder-setup` uses a **hidden password-style prompt** (key not echoed) and writes `~/.hcscoder/openrouter_api_key` (Unix: mode `600`).
+- **Enhanced Security** (v1.1.0):
+  - Advanced API key validation with entropy checking
+  - Path traversal prevention for all filesystem operations
+  - Command injection protection
+  - Comprehensive audit logging
+  - System file protection
 
 ---
 

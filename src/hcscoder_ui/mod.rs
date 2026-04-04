@@ -140,7 +140,7 @@ async fn run_plain_chat(
     // Print ASCII logo
     println!("{}", crate::LOGO_ASCII);
     println!("🚀 hcscoder v{} - Interactive Chat", env!("CARGO_PKG_VERSION"));
-    println!("   Made with ❤️  by hcsmedia");
+    println!("   Made with ❤️  by hcsmedia | Stable Release");
     println!("Model: {}", client.model());
     println!("Theme: {:?}", UiTheme::from_env());
     println!("Type 'quit', 'exit', 'clear', 'help', or 'theme' for commands");
@@ -174,7 +174,7 @@ async fn run_plain_chat(
         }
 
         if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
-            println!("\n👋 Goodbye! Thanks for using hcscoder by hcsmedia ❤️");
+            println!("\n👋 Goodbye! Thanks for using hcscoder by hcsmedia ❤️ | Made with love");
             break;
         }
 
