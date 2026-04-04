@@ -21,9 +21,21 @@ pub fn get_api_key() -> Result<String> {
 
 /// Validate API key format
 pub fn validate_api_key(key: &str) -> bool {
-    // OpenRouter keys typically start with "sk-or-"
-    // but we accept any non-empty string of reasonable length
-    key.len() >= 20 && key.len() <= 512
+    // OpenRouter keys start with "sk-or-" followed by alphanumeric and hyphens
+    // Minimum length 20, maximum 512 characters
+    if key.len() < 20 || key.len() > 512 {
+        return false;
+    }
+    
+    // Check for proper prefix pattern (sk-or-)
+    if !key.starts_with("sk-or-") {
+        // Allow legacy keys without prefix but warn
+        tracing::warn!("API key does not start with 'sk-or-' prefix. Consider regenerating your key.");
+    }
+    
+    // Ensure key contains only valid characters (alphanumeric, hyphen, underscore)
+    // This prevents injection attacks and malformed keys
+    key.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_')
 }
 
 /// Securely clear API key from config
