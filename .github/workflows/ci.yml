@@ -28,3 +28,28 @@ jobs:
 
       - name: cargo test
         run: cargo test
+
+      - name: cargo audit
+        run: cargo install cargo-audit && cargo audit
+
+      - name: Run benchmarks (dry run)
+        run: cargo bench --no-run || true
+
+  # Cross-platform builds
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Build
+        run: cargo build --release

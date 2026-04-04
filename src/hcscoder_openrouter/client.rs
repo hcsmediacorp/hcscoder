@@ -12,6 +12,13 @@ use tokio_stream::Stream;
 
 use crate::hcscoder_openrouter::auth;
 
+/// Random number generation for jitter in retry backoff
+fn random_jitter_ms(max_ms: u64) -> u64 {
+    use rand::Rng;
+    let mut rng = rand::thread_rng();
+    rng.gen_range(0..max_ms)
+}
+
 const USER_AGENT: &str = concat!(
     "hcscoder/",
     env!("CARGO_PKG_VERSION"),
@@ -245,9 +252,20 @@ impl HcscoderApiClient {
 
             let status = response.status();
             let code = status.as_u16();
-            // 401/402: auth/billing — do not retry. 429/502/503: transient — retry.
+            // 401/402: auth/billing — do not retry. 429/502/503: transient — retry with exponential backoff + jitter.
             if (code == 429 || code == 502 || code == 503) && attempt < MAX_RETRIES {
-                let delay = Duration::from_millis(200 * u64::from(1u32 << attempt));
+                // Exponential backoff: base_delay * 2^attempt + random jitter (0-500ms)
+                let base_delay = 200u64;
+                let exponential_delay = base_delay * (1u64 << attempt);
+                let jitter = random_jitter_ms(500);
+                let delay = Duration::from_millis(exponential_delay + jitter);
+                tracing::warn!(
+                    "OpenRouter request failed ({}). Retrying in {:?} (attempt {}/{})",
+                    code,
+                    delay,
+                    attempt,
+                    MAX_RETRIES
+                );
                 tokio::time::sleep(delay).await;
                 continue;
             }
@@ -287,8 +305,20 @@ impl HcscoderApiClient {
 
             let status = response.status();
             let code = status.as_u16();
+            // 401/402: auth/billing — do not retry. 429/502/503: transient — retry with exponential backoff + jitter.
             if (code == 429 || code == 502 || code == 503) && attempt < MAX_RETRIES {
-                let delay = Duration::from_millis(200 * u64::from(1u32 << attempt));
+                // Exponential backoff: base_delay * 2^attempt + random jitter (0-500ms)
+                let base_delay = 200u64;
+                let exponential_delay = base_delay * (1u64 << attempt);
+                let jitter = random_jitter_ms(500);
+                let delay = Duration::from_millis(exponential_delay + jitter);
+                tracing::warn!(
+                    "OpenRouter streaming request failed ({}). Retrying in {:?} (attempt {}/{})",
+                    code,
+                    delay,
+                    attempt,
+                    MAX_RETRIES
+                );
                 tokio::time::sleep(delay).await;
                 continue;
             }
@@ -340,21 +370,12 @@ impl HcscoderApiClient {
                                 Some(pos) => {
                                     let line = line_buf[..pos].trim_end_matches('\r').to_string();
                                     line_buf.drain(..pos + 1);
-                                    if line.is_empty() {
-                                        continue;
-                                    }
-                                    // SSE comment / keep-alive lines (RFC 8895)
-                                    if line.starts_with(':') {
-                                        continue;
-                                    }
-                                    if let Some(data) = line.strip_prefix("data: ") {
-                                        let data = data.trim();
-                                        if data.is_empty() {
-                                            continue;
-                                        }
-                                        if data == "[DONE]" {
-                                            return;
-                                        }
+                                    if line.is_empty() {\n                                        // Empty lines are valid SSE separators, skip silently\n                                        continue;\n                                    }\n                                    // SSE comment / keep-alive lines (RFC 8895)\n                                    if line.starts_with(':') {\n                                        continue;\n                                    }\n                                    // Handle both \"data:\" and \"data:\" (with/without space per RFC 8895)\n                                    let data = if let Some(d) = line.strip_prefix(\"data: \") {\n                                        d\n                                    } else if let Some(d) = line.strip_prefix(\"data:\") {\n                                        d.trim_start()\n                                    } else {\n                                        // Not a data line, skip\n                                        continue;\n                                    };
+                                    
+                                    let data = data.trim();
+                                    if data.is_empty() {\n                                        // Empty data field is valid, represents a blank message chunk\n                                        continue;\n                                    }
+                                    if data == "[DONE]" {
+                                        return;\n                                    }
                                         // Per OpenRouter docs: ignore occasional non-JSON noise; handle mid-stream errors.
                                         let v: serde_json::Value = match serde_json::from_str(data) {
                                             Ok(v) => v,

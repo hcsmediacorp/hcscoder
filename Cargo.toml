@@ -1,12 +1,12 @@
 [package]
 name = "hcscoder"
-version = "1.0.0"
+version = "1.1.0-security"
 edition = "2021"
 authors = ["hcsmedia (Tim) <hcsmediagroup@gmail.com>"]
-description = "High-performance AI coding assistant by hcsmedia - Privacy-first, OpenRouter-powered"
+description = "High-performance AI coding assistant by hcsmedia - Privacy-first, OpenRouter-powered (Stable Release)"
 license = "MIT"
 repository = "https://github.com/hcsmediacorp/hcscoder"
-keywords = ["cli", "ai", "coding", "openrouter", "privacy"]
+keywords = ["cli", "ai", "coding", "openrouter", "privacy", "security"]
 categories = ["development-tools", "command-line-utilities"]
 
 [dependencies]
@@ -15,13 +15,15 @@ tokio = { version = "1.35", features = ["full"] }
 
 # CLI Parsing
 clap = { version = "4.4", features = ["derive", "env"] }
+clap_complete = "4.4"
 
 # HTTP Client
-reqwest = { version = "0.11", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+toml = "0.8"
 
 # Async Stream Support
 async-stream = "0.3"
@@ -31,11 +33,17 @@ futures-util = "0.3"
 ratatui = "0.24"
 crossterm = "0.27"
 indicatif = "0.17"
-atty = "0.2"
+
+# Syntax Highlighting
+syntect = "5.1"
+
+# Command Line Editing (History & Completion)
+rustyline = "13.0"
 
 # Cryptography & Security
 ring = "0.17"
 base64 = "0.21"
+zeroize = "1.7"
 
 # File System & Watching
 notify = "6.1"
@@ -71,6 +79,25 @@ regex = "1.10"
 sysinfo = "0.30"
 walkdir = "2"
 
+# Platform-specific (Windows ACL)
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.52", features = ["Win32_Security", "Win32_System"] }
+
+[dev-dependencies]
+# Testing Framework
+tokio-test = "0.4"
+mockall = "0.12"
+tempfile = "3.9"
+assert_cmd = "2.0"
+predicates = "3.0"
+
+# Benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "benchmarks"
+harness = false
+
 [profile.release]
 opt-level = 3
 lto = true
@@ -78,6 +105,10 @@ codegen-units = 1
 strip = true
 
 [profile.dev]
+opt-level = 0
+debug = true
+
+[profile.test]
 opt-level = 0
 debug = true
 

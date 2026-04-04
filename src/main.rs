@@ -31,9 +31,9 @@ pub const LOGO_ASCII: &str = r#"
 
 pub const VERSION_LONG: &str = concat!(
     env!("CARGO_PKG_VERSION"),
-    " — hcscoder by hcsmedia\n",
+    " — hcscoder by hcsmedia | Stable Release\n",
     "Instagram: @timfromhcs  |  Email: hcsmediagroup@gmail.com\n",
-    "OpenRouter-powered · MIT License (c) 2026 hcsmedia — attribution required",
+    "OpenRouter-powered · MIT License (c) 2026 hcsmedia — attribution required · Made with ❤️",
 );
 
 #[derive(Parser)]
@@ -145,7 +145,7 @@ fn print_contact() {
     println!("  Instagram: {}", CONTACT_INSTAGRAM);
     println!("  Email:     {}", CONTACT_EMAIL);
     println!("  License:   MIT (c) 2026 hcsmedia — attribution mandatory when redistributing.");
-    println!();
+    println!("  Made with ❤️  by hcsmedia | Stable Release\n");
 }
 
 #[tokio::main]
