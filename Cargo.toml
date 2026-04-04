@@ -46,7 +46,7 @@ base64 = "0.21"
 zeroize = "1.7"
 
 # File System & Watching
-notify = "6.1"
+notify = "8.2"
 tokio-stream = "0.1"
 
 # Logging (local only, no remote)
