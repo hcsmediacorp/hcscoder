@@ -1,46 +1,70 @@
-# Compiled and build artifacts
+```
+# Rust/Cargo
+.cargo/
+.rustup/
+target/
+
+# Dependencies
+node_modules/
+venv/
+.venv/
+__pycache__/
+.mypy_cache/
+.pytest_cache/
+.gradle/
+
+# Build artifacts
 *.o
 *.obj
 *.exe
-!releases/hcscoder.exe
-!releases/hcscoder-setup.exe
 *.dll
 *.so
 *.a
 *.out
-target/
-target-test-tmp/
+dist/
+build/
 
-# OS-specific junk
-.DS_Store
-.DS_Store?
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-
-# Dependencies
-**/node_modules/
-**/.venv/
-**/venv/
-**/__pycache__/
-**/.mypy_cache/
-**/.pytest_cache/
-**/.gradle/
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # Logs and temp files
 *.log
 *.tmp
-*.swp
-*.swo
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
-.vscode/
-.idea/
+# System files
+.DS_Store
+Thumbs.db
 
-# Rust specific
-**/target/
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Compressed files
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+```
