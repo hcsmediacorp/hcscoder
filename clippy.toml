@@ -1,0 +1,13 @@
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+msrv = "1.70"
+
+[disallowed-methods]
+# Disallow unwrap in production code
+path = ["std::option::Option::unwrap", "std::result::Result::unwrap"]
+reason = "Use ? operator or proper error handling instead. unwrap() is only allowed in tests."
+
+[disallowed-types]
+# Disallow panic! in production code
+path = ["std::panic::panic_any"]
+reason = "Use anyhow::bail! or return an error instead"
