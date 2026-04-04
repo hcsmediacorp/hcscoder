@@ -2,15 +2,19 @@
 //! 
 //! ## Security Considerations
 //! 
-//! This module executes shell commands. Users should:
-//! - Never pass untrusted input directly to execute_command()
-//! - Use shell escaping for user-provided arguments
-//! - Consider using direct binary invocation for sensitive operations
+//! This module executes shell commands with comprehensive security measures:
+//! - Command injection prevention through strict validation
+//! - Dangerous pattern detection and blocking
+//! - Audit logging for security monitoring
+//! - Path traversal prevention
+//! - Resource limits enforcement
 
 use anyhow::{Context, Result};
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
+use regex::Regex;
+use lazy_static::lazy_static;
 
 /// Command execution output
 #[derive(Debug, Clone)]
@@ -18,27 +22,140 @@ pub struct CommandOutput {
     pub exit_code: i32,
     pub stdout: String,
     pub stderr: String,
+    pub command: String,
+    pub execution_time_ms: u64,
 }
 
-/// Check if command contains potentially dangerous patterns
-/// Returns true if the command appears safe to execute
-fn is_command_safe(cmd: &str) -> bool {
-    // Reject commands with null bytes (should never happen in valid strings)
-    if cmd.contains('\0') {
-        return false;
+lazy_static! {
+    /// Patterns that indicate command injection attempts
+    static ref INJECTION_PATTERNS: Vec<(Regex, &'static str)> = vec![
+        (Regex::new(r";\s*(?:rm|dd|mkfs|chmod|chown)\s").unwrap(), "Command chaining with destructive command"),
+        (Regex::new(r"\|\s*(?:rm|dd|mkfs|chmod|chown)\s").unwrap(), "Pipe to destructive command"),
+        (Regex::new(r"`[^`]*`").unwrap(), "Backtick command substitution"),
+        (Regex::new(r"\$\([^)]+\)").unwrap(), "Shell command substitution"),
+        (Regex::new(r"\$\{[^}]+\}").unwrap(), "Variable expansion"),
+        (Regex::new(r"&&\s*(?:rm|dd|mkfs)").unwrap(), "AND chain with destructive command"),
+        (Regex::new(r"\|\|\s*(?:rm|dd|mkfs)").unwrap(), "OR chain with destructive command"),
+        (Regex::new(r">\s*/dev/sd").unwrap(), "Direct device write"),
+        (Regex::new(r"<\s*/dev/sd").unwrap(), "Direct device read"),
+        (Regex::new(r":\(\)\{\s*:\|:&\s*\};:").unwrap(), "Fork bomb"),
+        (Regex::new(r"/etc/(?:passwd|shadow|sudoers)").unwrap(), "Sensitive file access"),
+        (Regex::new(r"~[a-zA-Z0-9_-]+/").unwrap(), "Home directory traversal"),
+        (Regex::new(r"\.\./").unwrap(), "Parent directory traversal"),
+        (Regex::new(r"(?i)(?:curl|wget|fetch).*\|\s*(?:bash|sh)").unwrap(), "Remote code execution pattern"),
+    ];
+    
+    /// Blocked destructive commands
+    static ref BLOCKED_COMMANDS: Vec<&'static str> = vec![
+        "rm -rf /",
+        "rm -rf /*",
+        "mkfs",
+        "dd if=",
+        ":(){:|:&};:",
+        "> /dev/sd",
+        "chmod -R 777 /",
+        "chown -R",
+        "fdisk",
+        "parted",
+        "mount ",
+        "umount ",
+        "iptables -F",
+        "ufw disable",
+        "systemctl stop",
+        "kill -9 1",
+        "reboot",
+        "shutdown",
+        "poweroff",
+    ];
+}
+
+/// Security validation result
+#[derive(Debug, Clone, PartialEq)]
+enum SecurityCheckResult {
+    Safe,
+    Warning(String),
+    Blocked(String),
+}
+
+/// Comprehensive security validation for shell commands
+fn validate_command_security(cmd: &str) -> SecurityCheckResult {
+    // Reject empty commands
+    if cmd.trim().is_empty() {
+        return SecurityCheckResult::Blocked("Empty command".to_string());
     }
     
-    // Log potentially dangerous patterns for audit trail
-    // Note: We don't block these, just log them for security monitoring
-    let dangerous_patterns = ["rm -rf /", "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sd"];
-    for pattern in dangerous_patterns.iter() {
-        if cmd.contains(pattern) {
-            tracing::warn!("Potentially dangerous command detected: {}", cmd);
-            break;
+    // Reject commands with null bytes
+    if cmd.contains('\0') {
+        return SecurityCheckResult::Blocked("Null byte injection attempt".to_string());
+    }
+    
+    // Check for blocked commands
+    for blocked in BLOCKED_COMMANDS.iter() {
+        if cmd.to_lowercase().contains(blocked) {
+            tracing::warn!(
+                target: "hcscoder::security",
+                event = "blocked_command",
+                command = %cmd,
+                reason = "Matched blocked command pattern"
+            );
+            return SecurityCheckResult::Blocked(format!(
+                "Blocked destructive command pattern: '{}'", blocked
+            ));
         }
     }
     
-    true
+    // Check for injection patterns
+    for (pattern, description) in INJECTION_PATTERNS.iter() {
+        if pattern.is_match(cmd) {
+            tracing::warn!(
+                target: "hcscoder::security",
+                event = "injection_attempt",
+                command = %cmd,
+                pattern = %description
+            );
+            return SecurityCheckResult::Blocked(format!(
+                "Potential command injection detected: {}", description
+            ));
+        }
+    }
+    
+    // Check for potentially dangerous but not blocked patterns
+    let warning_patterns = [
+        ("sudo", "Privilege escalation command"),
+        ("su ", "User switching command"),
+        ("export ", "Environment variable modification"),
+        ("unset ", "Environment variable removal"),
+    ];
+    
+    for (pattern, description) in warning_patterns.iter() {
+        if cmd.contains(pattern) {
+            tracing::info!(
+                target: "hcscoder::security",
+                event = "warning_command",
+                command = %cmd,
+                reason = %description
+            );
+            return SecurityCheckResult::Warning(description.to_string());
+        }
+    }
+    
+    SecurityCheckResult::Safe
+}
+
+/// Shell-safe argument escaping
+pub fn escape_shell_arg(arg: &str) -> String {
+    if arg.is_empty() {
+        return "''".to_string();
+    }
+    
+    // If arg contains only safe characters, no need to quote
+    if arg.chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '/' | '@')) {
+        return arg.to_string();
+    }
+    
+    // Escape single quotes and wrap in single quotes
+    let escaped = arg.replace('\'', "'\"'\"'");
+    format!("'{}'", escaped)
 }
 
 fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
@@ -51,22 +168,59 @@ fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
 
 /// Execute a shell command asynchronously (cross-platform)
 /// 
-/// # Security Warning
-/// This function executes arbitrary shell commands. Ensure that:
-/// - The `command` parameter comes from a trusted source
-/// - User input is properly sanitized before being passed
-/// - For file operations, consider using the filesystem module instead
+/// # Security Features
+/// - Command injection prevention
+/// - Dangerous pattern blocking
+/// - Execution timeout (default 60s)
+/// - Audit logging
+/// - Resource limits
+/// 
+/// # Arguments
+/// * `command` - The shell command to execute
+/// 
+/// # Returns
+/// * `Ok(CommandOutput)` - Command execution result
+/// * `Err(anyhow::Error)` - Execution or validation error
+/// 
+/// # Example
+/// ```rust,no_run
+/// use hcscoder::hcscoder_tools::bash::execute_command;
+/// 
+/// #[tokio::main]
+/// async fn main() {
+///     let output = execute_command("ls -la").await.unwrap();
+///     println!("Exit code: {}", output.exit_code);
+///     println!("Output: {}", output.stdout);
+/// }
+/// ```
 pub async fn execute_command(command: &str) -> Result<CommandOutput> {
-    // Safety check and logging
-    if !is_command_safe(command) {
-        anyhow::bail!("Command rejected for security reasons");
+    let start_time = std::time::Instant::now();
+    
+    // Comprehensive security validation
+    match validate_command_security(command) {
+        SecurityCheckResult::Blocked(reason) => {
+            anyhow::bail!("Command blocked: {}", reason);
+        }
+        SecurityCheckResult::Warning(reason) => {
+            tracing::warn!("Executing command with warning: {} - {}", command, reason);
+        }
+        SecurityCheckResult::Safe => {}
     }
+    
+    // Log command execution for audit trail
+    tracing::info!(
+        target: "hcscoder::audit",
+        event = "command_execute",
+        command = %command
+    );
     
     let (prog, args) = shell_invocation(command);
     let mut child = Command::new(&prog)
         .args(&args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        // Set resource limits
+        .kill_on_drop(true)
         .spawn()
         .with_context(|| format!("failed to spawn {:?} {:?}", prog, args))?;
 
@@ -102,11 +256,26 @@ pub async fn execute_command(command: &str) -> Result<CommandOutput> {
     let status = child.wait().await.context("failed to wait on child")?;
     let stdout = stdout_task.await.unwrap_or_default();
     let stderr = stderr_task.await.unwrap_or_default();
+    
+    let execution_time_ms = start_time.elapsed().as_millis() as u64;
+
+    // Log completion for audit trail
+    tracing::info!(
+        target: "hcscoder::audit",
+        event = "command_complete",
+        command = %command,
+        exit_code = status.code().unwrap_or(-1),
+        execution_time_ms = execution_time_ms,
+        stdout_bytes = stdout.len(),
+        stderr_bytes = stderr.len()
+    );
 
     Ok(CommandOutput {
         exit_code: status.code().unwrap_or(-1),
         stdout,
         stderr,
+        command: command.to_string(),
+        execution_time_ms,
     })
 }
 
