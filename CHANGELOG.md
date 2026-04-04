@@ -5,6 +5,34 @@ All notable changes to **hcscoder** are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- CONTRIBUTING.md with comprehensive contribution guidelines
+- CODE_OF_CONDUCT.md (Contributor Covenant 2.0)
+- ARCHITECTURE.md with detailed system architecture documentation
+- FAQ.md with frequently asked questions
+- Issue templates (bug report, feature request, question)
+- Pull request template
+- rustfmt.toml for consistent code formatting
+- clippy.toml with unwrap() disallowance in production code
+- Test infrastructure with integration and unit tests (`tests/`)
+- Benchmark suite using criterion (`benches/`)
+- Example programs demonstrating library usage (`examples/`)
+- Cross-platform CI builds (Windows, macOS, Linux)
+- cargo-audit integration in CI for security scanning
+- GitHub Actions benchmark workflow
+
+### Changed
+- Enhanced CI pipeline with security auditing
+- Improved documentation structure
+- Updated CHANGELOG.md with new section format
+
+### Fixed
+- Missing community guidelines
+- Lack of testing infrastructure
+- No benchmark framework
+
 ## [1.1.0-security] — 2026-04-03
 
 ### 🔒 Security Hardening (Major)

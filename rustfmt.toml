@@ -1,0 +1,32 @@
+edition = "2021"
+max_width = 100
+tab_spaces = 4
+newline_style = "Unix"
+
+# Reorder imports alphabetically
+reorder_imports = true
+reorder_modules = true
+
+# Use field initialize shorthand where possible
+use_field_init_shorthand = true
+
+# Merge derives where possible
+merge_derives = true
+
+# Format doc comments
+format_code_in_doc_comments = true
+normalize_doc_attributes = true
+
+# Wrap comments at 100 characters
+comment_width = 100
+wrap_comments = true
+
+# Remove nested parentheses
+remove_nested_parens = true
+
+# Use small heuristics for formatting
+use_small_heuristics = "Default"
+
+# Import paths style
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
