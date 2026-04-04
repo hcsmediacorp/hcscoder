@@ -1,4 +1,11 @@
 //! hcscoder Bash / shell execution — async via tokio::process.
+//! 
+//! ## Security Considerations
+//! 
+//! This module executes shell commands. Users should:
+//! - Never pass untrusted input directly to execute_command()
+//! - Use shell escaping for user-provided arguments
+//! - Consider using direct binary invocation for sensitive operations
 
 use anyhow::{Context, Result};
 use std::process::Stdio;
@@ -13,6 +20,27 @@ pub struct CommandOutput {
     pub stderr: String,
 }
 
+/// Check if command contains potentially dangerous patterns
+/// Returns true if the command appears safe to execute
+fn is_command_safe(cmd: &str) -> bool {
+    // Reject commands with null bytes (should never happen in valid strings)
+    if cmd.contains('\0') {
+        return false;
+    }
+    
+    // Log potentially dangerous patterns for audit trail
+    // Note: We don't block these, just log them for security monitoring
+    let dangerous_patterns = ["rm -rf /", "mkfs", "dd if=", ":(){:|:&};:", "> /dev/sd"];
+    for pattern in dangerous_patterns.iter() {
+        if cmd.contains(pattern) {
+            tracing::warn!("Potentially dangerous command detected: {}", cmd);
+            break;
+        }
+    }
+    
+    true
+}
+
 fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
     if cfg!(windows) {
         ("cmd".to_string(), vec!["/C".to_string(), cmd.to_string()])
@@ -22,7 +50,18 @@ fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
 }
 
 /// Execute a shell command asynchronously (cross-platform)
+/// 
+/// # Security Warning
+/// This function executes arbitrary shell commands. Ensure that:
+/// - The `command` parameter comes from a trusted source
+/// - User input is properly sanitized before being passed
+/// - For file operations, consider using the filesystem module instead
 pub async fn execute_command(command: &str) -> Result<CommandOutput> {
+    // Safety check and logging
+    if !is_command_safe(command) {
+        anyhow::bail!("Command rejected for security reasons");
+    }
+    
     let (prog, args) = shell_invocation(command);
     let mut child = Command::new(&prog)
         .args(&args)
