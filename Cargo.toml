@@ -76,6 +76,7 @@ shellexpand = "3.1"
 
 # Process Execution (tokio::process in code)
 regex = "1.10"
+lazy_static = "1.5"
 sysinfo = "0.30"
 walkdir = "2"
 

@@ -4,7 +4,6 @@
 
 use assert_cmd::Command;
 use predicates::prelude::*;
-use std::process::Command as StdCommand;
 
 #[test]
 fn test_cli_help_flag() {

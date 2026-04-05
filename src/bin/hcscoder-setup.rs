@@ -10,6 +10,17 @@ use hcscoder::hcscoder_openrouter::models;
 use hcscoder::hcscoder_openrouter::HcscoderOpenRouterConfig;
 
 fn main() -> Result<()> {
+    if std::env::args().any(|arg| arg == "--help" || arg == "-h") {
+        println!("hcscoder-setup - Interactive setup for hcscoder");
+        println!();
+        println!("Usage:");
+        println!("  hcscoder-setup");
+        println!();
+        println!("Options:");
+        println!("  -h, --help    Show this help message and exit");
+        return Ok(());
+    }
+
     println!("🚀 hcscoder Setup Utility");
     println!("{}", "=".repeat(50));
     println!();

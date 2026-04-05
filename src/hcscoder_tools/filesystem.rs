@@ -10,7 +10,7 @@
 //! - Audit logging for sensitive operations
 
 use anyhow::{Context, Result};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -20,16 +20,16 @@ fn get_base_dir() -> Result<PathBuf> {
 }
 
 /// Validate and canonicalize a path to prevent path traversal attacks
-/// 
+///
 /// # Security Checks
 /// 1. Resolves symlinks and relative paths
 /// 2. Ensures path is within allowed base directory
 /// 3. Rejects paths containing null bytes
 /// 4. Validates UTF-8 encoding
-/// 
+///
 /// # Arguments
 /// * `path` - The path to validate
-/// 
+///
 /// # Returns
 /// * `Ok(PathBuf)` - Canonicalized, safe path
 /// * `Err(anyhow::Error)` - Security validation failed
@@ -38,24 +38,24 @@ fn validate_and_canonicalize_path(path: &str) -> Result<PathBuf> {
     if path.contains('\0') {
         anyhow::bail!("Path contains null byte injection attempt");
     }
-    
+
     // Convert to PathBuf and handle tilde expansion
     let expanded = shellexpand::tilde(path);
     let path_buf = PathBuf::from(expanded.as_ref());
-    
+
     // Make absolute if relative
     let absolute_path = if path_buf.is_absolute() {
         path_buf
     } else {
         get_base_dir()?.join(&path_buf)
     };
-    
+
     // Canonicalize to resolve symlinks and .. components
     // Note: canonicalize fails if path doesn't exist, so we handle both cases
     let canonical = if absolute_path.exists() {
-        absolute_path.canonicalize().with_context(|| {
-            format!("Failed to canonicalize path: {}", path)
-        })?
+        absolute_path
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize path: {}", path))?
     } else {
         // For non-existent paths, canonicalize parent and rejoin
         if let Some(parent) = absolute_path.parent() {
@@ -73,11 +73,11 @@ fn validate_and_canonicalize_path(path: &str) -> Result<PathBuf> {
             absolute_path
         }
     };
-    
+
     // Verify the canonical path is within allowed boundaries
     // For now, we allow any path but log potentially dangerous patterns
     let path_str = canonical.to_string_lossy();
-    if path_str.contains("/etc/passwd") 
+    if path_str.contains("/etc/passwd")
         || path_str.contains("/etc/shadow")
         || path_str.contains("/proc/")
         || path_str.contains("/sys/")
@@ -91,21 +91,21 @@ fn validate_and_canonicalize_path(path: &str) -> Result<PathBuf> {
         // We don't block these outright as they might be legitimate in some contexts,
         // but we log them for audit purposes
     }
-    
+
     Ok(canonical)
 }
 
 /// Read file contents with path validation
 pub async fn read_file(path: &str) -> Result<String> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::debug!(
         target: "hcscoder::audit",
         event = "file_read",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     fs::read_to_string(&safe_path)
         .await
         .context(format!("Failed to read file: {}", path))
@@ -114,7 +114,7 @@ pub async fn read_file(path: &str) -> Result<String> {
 /// Write content to file (creates if not exists, overwrites if exists)
 pub async fn write_file(path: &str, content: &str) -> Result<()> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::info!(
         target: "hcscoder::audit",
         event = "file_write",
@@ -122,13 +122,13 @@ pub async fn write_file(path: &str, content: &str) -> Result<()> {
         original_path = %path,
         content_length = content.len()
     );
-    
+
     // Ensure parent directory exists
     if let Some(parent) = safe_path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).await.with_context(|| {
-                format!("Failed to create parent directory: {:?}", parent)
-            })?;
+            fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
         }
     }
 
@@ -146,7 +146,7 @@ pub async fn write_file(path: &str, content: &str) -> Result<()> {
 /// Append content to file with path validation
 pub async fn append_file(path: &str, content: &str) -> Result<()> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::info!(
         target: "hcscoder::audit",
         event = "file_append",
@@ -154,7 +154,7 @@ pub async fn append_file(path: &str, content: &str) -> Result<()> {
         original_path = %path,
         content_length = content.len()
     );
-    
+
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -172,14 +172,14 @@ pub async fn append_file(path: &str, content: &str) -> Result<()> {
 /// List directory contents with path validation
 pub async fn list_directory(path: &str) -> Result<Vec<PathEntry>> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::debug!(
         target: "hcscoder::audit",
         event = "directory_list",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     let mut entries = Vec::new();
     let mut dir = fs::read_dir(&safe_path)
         .await
@@ -234,7 +234,7 @@ pub enum EntryType {
 pub async fn search_files(root: &str, pattern: &str) -> Result<Vec<PathBuf>> {
     // Validate root path to prevent directory traversal
     let safe_root = validate_and_canonicalize_path(root)?;
-    
+
     tracing::debug!(
         target: "hcscoder::audit",
         event = "file_search",
@@ -242,7 +242,7 @@ pub async fn search_files(root: &str, pattern: &str) -> Result<Vec<PathBuf>> {
         original_root = %root,
         pattern = %pattern
     );
-    
+
     let pattern = pattern.to_string();
     tokio::task::spawn_blocking(move || {
         let mut results = Vec::new();
@@ -291,14 +291,14 @@ fn glob_match(pattern: &str, text: &str) -> bool {
 /// Create a new directory with path validation
 pub async fn create_directory(path: &str) -> Result<()> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::info!(
         target: "hcscoder::audit",
         event = "directory_create",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     fs::create_dir_all(&safe_path)
         .await
         .context(format!("Failed to create directory: {}", path))
@@ -307,10 +307,10 @@ pub async fn create_directory(path: &str) -> Result<()> {
 /// Delete a file with path validation and safety checks
 pub async fn delete_file(path: &str) -> Result<()> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     // Prevent deletion of critical system files
     let path_str = safe_path.to_string_lossy();
-    if path_str.contains("/etc/") 
+    if path_str.contains("/etc/")
         || path_str.contains("/usr/bin/")
         || path_str.contains("/usr/lib/")
         || path_str.contains("/bin/")
@@ -324,14 +324,14 @@ pub async fn delete_file(path: &str) -> Result<()> {
         );
         anyhow::bail!("Deletion blocked: cannot delete system-protected files");
     }
-    
+
     tracing::warn!(
         target: "hcscoder::audit",
         event = "file_delete",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     fs::remove_file(&safe_path)
         .await
         .context(format!("Failed to delete file: {}", path))
@@ -340,7 +340,7 @@ pub async fn delete_file(path: &str) -> Result<()> {
 /// Delete a directory recursively with path validation and safety checks
 pub async fn delete_directory(path: &str) -> Result<()> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     // Prevent deletion of critical system directories
     let path_str = safe_path.to_string_lossy();
     if path_str.starts_with("/etc")
@@ -358,14 +358,14 @@ pub async fn delete_directory(path: &str) -> Result<()> {
         );
         anyhow::bail!("Deletion blocked: cannot delete system-protected directories");
     }
-    
+
     tracing::warn!(
         target: "hcscoder::audit",
         event = "directory_delete",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     fs::remove_dir_all(&safe_path)
         .await
         .context(format!("Failed to delete directory: {}", path))
@@ -375,7 +375,7 @@ pub async fn delete_directory(path: &str) -> Result<()> {
 pub async fn move_path(from: &str, to: &str) -> Result<()> {
     let safe_from = validate_and_canonicalize_path(from)?;
     let safe_to = validate_and_canonicalize_path(to)?;
-    
+
     tracing::info!(
         target: "hcscoder::audit",
         event = "path_move",
@@ -384,7 +384,7 @@ pub async fn move_path(from: &str, to: &str) -> Result<()> {
         original_from = %from,
         original_to = %to
     );
-    
+
     fs::rename(&safe_from, &safe_to)
         .await
         .context(format!("Failed to move {} to {}", from, to))
@@ -394,7 +394,7 @@ pub async fn move_path(from: &str, to: &str) -> Result<()> {
 pub async fn copy_file(from: &str, to: &str) -> Result<()> {
     let safe_from = validate_and_canonicalize_path(from)?;
     let safe_to = validate_and_canonicalize_path(to)?;
-    
+
     tracing::info!(
         target: "hcscoder::audit",
         event = "file_copy",
@@ -403,13 +403,13 @@ pub async fn copy_file(from: &str, to: &str) -> Result<()> {
         original_from = %from,
         original_to = %to
     );
-    
+
     // Ensure parent directory exists
     if let Some(parent) = safe_to.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent).await.with_context(|| {
-                format!("Failed to create parent directory: {:?}", parent)
-            })?;
+            fs::create_dir_all(parent)
+                .await
+                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
         }
     }
 
@@ -423,14 +423,14 @@ pub async fn copy_file(from: &str, to: &str) -> Result<()> {
 /// Get file metadata with path validation
 pub async fn get_metadata(path: &str) -> Result<FileMetadata> {
     let safe_path = validate_and_canonicalize_path(path)?;
-    
+
     tracing::debug!(
         target: "hcscoder::audit",
         event = "metadata_read",
         path = %safe_path.display(),
         original_path = %path
     );
-    
+
     let metadata = fs::metadata(&safe_path)
         .await
         .context(format!("Failed to get metadata for: {}", path))?;
@@ -475,16 +475,14 @@ mod tests {
 
     #[tokio::test]
     async fn test_write_and_read_file() {
-        let temp_path = "/tmp/hcscoder_test.txt";
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
         let content = "Hello, hcscoder!";
 
-        write_file(temp_path, content).await.unwrap();
-        let read_content = read_file(temp_path).await.unwrap();
+        write_file(&temp_path, content).await.unwrap();
+        let read_content = read_file(&temp_path).await.unwrap();
 
         assert_eq!(read_content, content);
-
-        // Cleanup
-        let _ = delete_file(temp_path).await;
     }
 
     #[tokio::test]

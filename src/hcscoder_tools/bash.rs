@@ -1,7 +1,7 @@
 //! hcscoder Bash / shell execution — async via tokio::process.
-//! 
+//!
 //! ## Security Considerations
-//! 
+//!
 //! This module executes shell commands with comprehensive security measures:
 //! - Command injection prevention through strict validation
 //! - Dangerous pattern detection and blocking
@@ -10,11 +10,11 @@
 //! - Resource limits enforcement
 
 use anyhow::{Context, Result};
+use lazy_static::lazy_static;
+use regex::Regex;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command;
-use regex::Regex;
-use lazy_static::lazy_static;
 
 /// Command execution output
 #[derive(Debug, Clone)]
@@ -44,7 +44,7 @@ lazy_static! {
         (Regex::new(r"\.\./").unwrap(), "Parent directory traversal"),
         (Regex::new(r"(?i)(?:curl|wget|fetch).*\|\s*(?:bash|sh)").unwrap(), "Remote code execution pattern"),
     ];
-    
+
     /// Blocked destructive commands
     static ref BLOCKED_COMMANDS: Vec<&'static str> = vec![
         "rm -rf /",
@@ -83,12 +83,12 @@ fn validate_command_security(cmd: &str) -> SecurityCheckResult {
     if cmd.trim().is_empty() {
         return SecurityCheckResult::Blocked("Empty command".to_string());
     }
-    
+
     // Reject commands with null bytes
     if cmd.contains('\0') {
         return SecurityCheckResult::Blocked("Null byte injection attempt".to_string());
     }
-    
+
     // Check for blocked commands
     for blocked in BLOCKED_COMMANDS.iter() {
         if cmd.to_lowercase().contains(blocked) {
@@ -99,11 +99,12 @@ fn validate_command_security(cmd: &str) -> SecurityCheckResult {
                 reason = "Matched blocked command pattern"
             );
             return SecurityCheckResult::Blocked(format!(
-                "Blocked destructive command pattern: '{}'", blocked
+                "Blocked destructive command pattern: '{}'",
+                blocked
             ));
         }
     }
-    
+
     // Check for injection patterns
     for (pattern, description) in INJECTION_PATTERNS.iter() {
         if pattern.is_match(cmd) {
@@ -114,11 +115,12 @@ fn validate_command_security(cmd: &str) -> SecurityCheckResult {
                 pattern = %description
             );
             return SecurityCheckResult::Blocked(format!(
-                "Potential command injection detected: {}", description
+                "Potential command injection detected: {}",
+                description
             ));
         }
     }
-    
+
     // Check for potentially dangerous but not blocked patterns
     let warning_patterns = [
         ("sudo", "Privilege escalation command"),
@@ -126,7 +128,7 @@ fn validate_command_security(cmd: &str) -> SecurityCheckResult {
         ("export ", "Environment variable modification"),
         ("unset ", "Environment variable removal"),
     ];
-    
+
     for (pattern, description) in warning_patterns.iter() {
         if cmd.contains(pattern) {
             tracing::info!(
@@ -138,7 +140,7 @@ fn validate_command_security(cmd: &str) -> SecurityCheckResult {
             return SecurityCheckResult::Warning(description.to_string());
         }
     }
-    
+
     SecurityCheckResult::Safe
 }
 
@@ -147,12 +149,15 @@ pub fn escape_shell_arg(arg: &str) -> String {
     if arg.is_empty() {
         return "''".to_string();
     }
-    
+
     // If arg contains only safe characters, no need to quote
-    if arg.chars().all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '/' | '@')) {
+    if arg
+        .chars()
+        .all(|c| c.is_alphanumeric() || matches!(c, '.' | '-' | '_' | '/' | '@'))
+    {
         return arg.to_string();
     }
-    
+
     // Escape single quotes and wrap in single quotes
     let escaped = arg.replace('\'', "'\"'\"'");
     format!("'{}'", escaped)
@@ -167,25 +172,25 @@ fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
 }
 
 /// Execute a shell command asynchronously (cross-platform)
-/// 
+///
 /// # Security Features
 /// - Command injection prevention
 /// - Dangerous pattern blocking
 /// - Execution timeout (default 60s)
 /// - Audit logging
 /// - Resource limits
-/// 
+///
 /// # Arguments
 /// * `command` - The shell command to execute
-/// 
+///
 /// # Returns
 /// * `Ok(CommandOutput)` - Command execution result
 /// * `Err(anyhow::Error)` - Execution or validation error
-/// 
+///
 /// # Example
 /// ```rust,no_run
 /// use hcscoder::hcscoder_tools::bash::execute_command;
-/// 
+///
 /// #[tokio::main]
 /// async fn main() {
 ///     let output = execute_command("ls -la").await.unwrap();
@@ -195,7 +200,7 @@ fn shell_invocation(cmd: &str) -> (String, Vec<String>) {
 /// ```
 pub async fn execute_command(command: &str) -> Result<CommandOutput> {
     let start_time = std::time::Instant::now();
-    
+
     // Comprehensive security validation
     match validate_command_security(command) {
         SecurityCheckResult::Blocked(reason) => {
@@ -206,14 +211,14 @@ pub async fn execute_command(command: &str) -> Result<CommandOutput> {
         }
         SecurityCheckResult::Safe => {}
     }
-    
+
     // Log command execution for audit trail
     tracing::info!(
         target: "hcscoder::audit",
         event = "command_execute",
         command = %command
     );
-    
+
     let (prog, args) = shell_invocation(command);
     let mut child = Command::new(&prog)
         .args(&args)
@@ -256,7 +261,7 @@ pub async fn execute_command(command: &str) -> Result<CommandOutput> {
     let status = child.wait().await.context("failed to wait on child")?;
     let stdout = stdout_task.await.unwrap_or_default();
     let stderr = stderr_task.await.unwrap_or_default();
-    
+
     let execution_time_ms = start_time.elapsed().as_millis() as u64;
 
     // Log completion for audit trail

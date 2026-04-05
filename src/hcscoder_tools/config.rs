@@ -1,8 +1,8 @@
 //! hcscoder Configuration Module
-//! 
+//!
 //! Configuration file management for hcscoder.
 //! Supports loading from ~/.hcscoder/config.toml
-//! 
+//!
 //! ## Priority Order (highest to lowest):
 //! 1. CLI arguments (--model, --theme, etc.)
 //! 2. Environment variables (OPENROUTER_API_KEY, HCSCODER_THEME, etc.)
@@ -11,9 +11,9 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
 use std::collections::HashMap;
-use tracing::{debug, info, warn};
+use std::path::PathBuf;
+use tracing::{debug, info};
 
 /// Color support mode
 #[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
@@ -142,25 +142,25 @@ fn default_true() -> bool {
 pub struct HcscoderConfig {
     #[serde(default)]
     pub openrouter: OpenRouterConfig,
-    
+
     #[serde(default)]
     pub ui: UiConfig,
-    
+
     #[serde(default)]
     pub chat: ChatConfig,
-    
+
     #[serde(default)]
     pub security: SecurityConfig,
-    
+
     #[serde(default)]
     pub memory: MemoryConfig,
-    
+
     #[serde(default)]
     pub performance: PerformanceConfig,
-    
+
     #[serde(default)]
     pub buddy: BuddyConfig,
-    
+
     // Legacy fields for backward compatibility
     pub model: Option<String>,
     pub temperature: Option<f32>,
@@ -289,12 +289,11 @@ impl HcscoderConfig {
             return Ok(HcscoderConfig::default());
         }
 
-        let content = std::fs::read_to_string(&path)
-            .context("Failed to read config file")?;
-        
-        let config: HcscoderConfig = toml::from_str(&content)
-            .context("Failed to parse config file (TOML)")?;
-        
+        let content = std::fs::read_to_string(&path).context("Failed to read config file")?;
+
+        let config: HcscoderConfig =
+            toml::from_str(&content).context("Failed to parse config file (TOML)")?;
+
         info!("Configuration loaded from {:?}", path);
         Ok(config)
     }
@@ -308,9 +307,8 @@ impl HcscoderConfig {
             std::fs::create_dir_all(parent)?;
         }
 
-        let content = toml::to_string_pretty(self)
-            .context("Failed to serialize config to TOML")?;
-        
+        let content = toml::to_string_pretty(self).context("Failed to serialize config to TOML")?;
+
         std::fs::write(&path, content)?;
 
         // Set secure permissions on Unix
@@ -369,20 +367,20 @@ impl HcscoderConfig {
 
 /// Get current configuration
 pub async fn get_config() -> Result<HcscoderConfig> {
-    HcscoderConfig::load().await
+    HcscoderConfig::load()
 }
 
 /// Update configuration
 pub async fn update_config(key: &str, value: serde_json::Value) -> Result<HcscoderConfig> {
-    let mut config = HcscoderConfig::load().await?;
+    let mut config = HcscoderConfig::load()?;
     config.set(key, value);
-    config.save().await?;
+    config.save()?;
     Ok(config)
 }
 
 /// List all configuration values
 pub async fn list_config() -> Result<HcscoderConfig> {
-    HcscoderConfig::load().await
+    HcscoderConfig::load()
 }
 
 #[cfg(test)]
