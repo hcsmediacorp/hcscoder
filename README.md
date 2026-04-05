@@ -1,10 +1,5 @@
 # hcscoder
 
-[![Latest release](https://img.shields.io/github/v/release/hcsmediacorp/hcscoder?label=release&color=blue)](https://github.com/hcsmediacorp/hcscoder/releases/latest)
-[![CI](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/ci.yml)
-[![Release workflow](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml/badge.svg)](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
 **hcscoder** is a privacy-first, **Rust-native** CLI coding assistant powered by [OpenRouter](https://openrouter.ai/). It runs on your machine, stores API keys locally, and does **not** ship telemetry or phone-home analytics.
 
 | Topic | Details |
