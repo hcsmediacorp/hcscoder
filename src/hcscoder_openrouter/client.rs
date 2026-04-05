@@ -370,50 +370,69 @@ impl HcscoderApiClient {
                                 Some(pos) => {
                                     let line = line_buf[..pos].trim_end_matches('\r').to_string();
                                     line_buf.drain(..pos + 1);
-                                    if line.is_empty() {\n                                        // Empty lines are valid SSE separators, skip silently\n                                        continue;\n                                    }\n                                    // SSE comment / keep-alive lines (RFC 8895)\n                                    if line.starts_with(':') {\n                                        continue;\n                                    }\n                                    // Handle both \"data:\" and \"data:\" (with/without space per RFC 8895)\n                                    let data = if let Some(d) = line.strip_prefix(\"data: \") {\n                                        d\n                                    } else if let Some(d) = line.strip_prefix(\"data:\") {\n                                        d.trim_start()\n                                    } else {\n                                        // Not a data line, skip\n                                        continue;\n                                    };
-                                    
+
+                                    if line.is_empty() {
+                                        continue;
+                                    }
+                                    if line.starts_with(':') {
+                                        continue;
+                                    }
+
+                                    let data = if let Some(d) = line.strip_prefix("data: ") {
+                                        d
+                                    } else if let Some(d) = line.strip_prefix("data:") {
+                                        d.trim_start()
+                                    } else {
+                                        continue;
+                                    };
+
                                     let data = data.trim();
-                                    if data.is_empty() {\n                                        // Empty data field is valid, represents a blank message chunk\n                                        continue;\n                                    }
+                                    if data.is_empty() {
+                                        continue;
+                                    }
                                     if data == "[DONE]" {
-                                        return;\n                                    }
-                                        // Per OpenRouter docs: ignore occasional non-JSON noise; handle mid-stream errors.
-                                        let v: serde_json::Value = match serde_json::from_str(data) {
-                                            Ok(v) => v,
-                                            Err(_) => continue,
-                                        };
-                                        if let Some(err) = v.get("error") {
-                                            let msg = err
-                                                .get("message")
-                                                .and_then(|m| m.as_str())
-                                                .unwrap_or("provider error");
-                                            yield Err(anyhow::anyhow!("OpenRouter stream error: {}", msg));
-                                            return;
-                                        }
-                                        if let Some(choices) = v.get("choices").and_then(|c| c.as_array()) {
-                                            if let Some(fr) = choices
-                                                .first()
-                                                .and_then(|c| c.get("finish_reason"))
-                                                .and_then(|f| f.as_str())
-                                            {
-                                                if fr == "error" {
-                                                    yield Err(anyhow::anyhow!(
-                                                        "OpenRouter stream terminated with finish_reason=error"
-                                                    ));
-                                                    return;
-                                                }
-                                            }
-                                        }
-                                        if let Some(content) = v
-                                            .get("choices")
-                                            .and_then(|c| c.as_array())
-                                            .and_then(|a| a.first())
-                                            .and_then(|ch| ch.get("delta"))
-                                            .and_then(|d| d.get("content"))
-                                            .and_then(|c| c.as_str())
+                                        return;
+                                    }
+
+                                    // Per OpenRouter docs: ignore occasional non-JSON noise;
+                                    // handle mid-stream error payloads.
+                                    let v: serde_json::Value = match serde_json::from_str(data) {
+                                        Ok(v) => v,
+                                        Err(_) => continue,
+                                    };
+                                    if let Some(err) = v.get("error") {
+                                        let msg = err
+                                            .get("message")
+                                            .and_then(|m| m.as_str())
+                                            .unwrap_or("provider error");
+                                        yield Err(anyhow::anyhow!("OpenRouter stream error: {}", msg));
+                                        return;
+                                    }
+                                    if let Some(choices) = v.get("choices").and_then(|c| c.as_array()) {
+                                        if let Some(fr) = choices
+                                            .first()
+                                            .and_then(|c| c.get("finish_reason"))
+                                            .and_then(|f| f.as_str())
                                         {
-                                            if !content.is_empty() {
-                                                yield Ok(content.to_string());
+                                            if fr == "error" {
+                                                yield Err(anyhow::anyhow!(
+                                                    "OpenRouter stream terminated with finish_reason=error"
+                                                ));
+                                                return;
                                             }
+                                        }
+                                    }
+
+                                    if let Some(content) = v
+                                        .get("choices")
+                                        .and_then(|c| c.as_array())
+                                        .and_then(|a| a.first())
+                                        .and_then(|ch| ch.get("delta"))
+                                        .and_then(|d| d.get("content"))
+                                        .and_then(|c| c.as_str())
+                                    {
+                                        if !content.is_empty() {
+                                            yield Ok(content.to_string());
                                         }
                                     }
                                 }
@@ -441,8 +460,7 @@ mod post_release_audit {
     fn audit_openrouter_headers_match_spec() {
         assert_eq!(APP_TITLE, "hcscoder by hcsmedia");
         assert_eq!(
-            REFERER,
-            "https://github.com/hcsmediacorp/hcscoder",
+            REFERER, "https://github.com/hcsmediacorp/hcscoder",
             "canonical public repo URL for attribution"
         );
     }
@@ -450,21 +468,10 @@ mod post_release_audit {
     #[test]
     fn error_body_json_becomes_short_message() {
         let raw = r#"{"error":{"message":"Insufficient credits"}}"#;
-        assert_eq!(
-            summarize_error_response_body(raw),
-            "Insufficient credits"
-        );
+        assert_eq!(summarize_error_response_body(raw), "Insufficient credits");
         let friendly = friendly_http_error(402, summarize_error_response_body(raw));
-        assert!(
-            friendly.contains("402"),
-            "{}",
-            friendly
-        );
-        assert!(
-            friendly.contains("Insufficient credits"),
-            "{}",
-            friendly
-        );
+        assert!(friendly.contains("402"), "{}", friendly);
+        assert!(friendly.contains("Insufficient credits"), "{}", friendly);
         assert!(
             !friendly.contains("\"error\""),
             "should not echo raw JSON: {}",
