@@ -9,6 +9,9 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tokio::sync::mpsc;
 
+const MEMORY_MARKDOWN_FILE: &str = "MEMORY.md";
+const MEMORY_JSON_FILE: &str = "memory.json";
+
 /// Memory entry
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HcscoderMemoryEntry {
@@ -33,6 +36,7 @@ pub enum MemoryCategory {
 pub struct HcscoderMemoryManager {
     entries: Vec<HcscoderMemoryEntry>,
     storage_path: PathBuf,
+    json_storage_path: PathBuf,
     tx: mpsc::Sender<MemoryEvent>,
 }
 
@@ -47,7 +51,7 @@ enum MemoryEvent {
 impl HcscoderMemoryManager {
     /// Create new memory manager
     pub async fn new() -> Result<Self> {
-        let storage_path = Self::get_storage_path()?;
+        let (storage_path, json_storage_path) = Self::get_storage_paths()?;
         let (tx, mut rx) = mpsc::channel(100);
 
         // Spawn background task for consolidation
@@ -78,6 +82,7 @@ impl HcscoderMemoryManager {
         let mut manager = Self {
             entries: Vec::new(),
             storage_path,
+            json_storage_path,
             tx,
         };
 
@@ -87,15 +92,25 @@ impl HcscoderMemoryManager {
         Ok(manager)
     }
 
-    /// Get storage path
-    fn get_storage_path() -> Result<PathBuf> {
-        let config_dir = dirs::home_dir()
-            .ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?
-            .join(".hcscoder")
-            .join("memory");
+    /// Get storage paths.
+    ///
+    /// If `HCSCODER_MEMORY_DIR` is set, it is used as the memory directory.
+    /// This improves testability and allows explicit override for advanced users.
+    fn get_storage_paths() -> Result<(PathBuf, PathBuf)> {
+        let config_dir = if let Ok(path) = std::env::var("HCSCODER_MEMORY_DIR") {
+            PathBuf::from(path)
+        } else {
+            dirs::home_dir()
+                .ok_or_else(|| anyhow::anyhow!("Failed to get home directory"))?
+                .join(".hcscoder")
+                .join("memory")
+        };
 
         std::fs::create_dir_all(&config_dir)?;
-        Ok(config_dir.join("MEMORY.md"))
+        Ok((
+            config_dir.join(MEMORY_MARKDOWN_FILE),
+            config_dir.join(MEMORY_JSON_FILE),
+        ))
     }
 
     /// Add a memory entry
@@ -165,22 +180,27 @@ impl HcscoderMemoryManager {
         let mut file = tokio::fs::File::create(&self.storage_path).await?;
         file.write_all(content.as_bytes()).await?;
 
+        let json = serde_json::to_string_pretty(&self.entries)?;
+        tokio::fs::write(&self.json_storage_path, json).await?;
+
         Ok(())
     }
 
     /// Load memories from file
     pub async fn load(&mut self) -> Result<()> {
-        if !self.storage_path.exists() {
+        if !self.json_storage_path.exists() {
             return Ok(());
         }
 
-        let _content = tokio::fs::read_to_string(&self.storage_path).await?;
+        let content = tokio::fs::read_to_string(&self.json_storage_path).await?;
+        let entries: Vec<HcscoderMemoryEntry> = serde_json::from_str(&content)?;
+        self.entries = entries;
 
-        // Simple parsing - in production would use proper markdown parser
-        self.entries.clear();
-
-        // For now, just acknowledge the file exists
-        tracing::info!("Loaded memory file: {:?}", self.storage_path);
+        tracing::info!(
+            "Loaded memory files: markdown={:?}, json={:?}",
+            self.storage_path,
+            self.json_storage_path
+        );
 
         Ok(())
     }
@@ -276,6 +296,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_memory_manager() {
+        let temp = tempfile::tempdir().unwrap();
+        std::env::set_var("HCSCODER_MEMORY_DIR", temp.path());
+
         let mut manager = HcscoderMemoryManager::new().await.unwrap();
 
         manager
@@ -289,5 +312,11 @@ mod tests {
 
         assert_eq!(manager.entries.len(), 1);
         assert_eq!(manager.entries[0].importance, 5);
+
+        let reloaded = HcscoderMemoryManager::new().await.unwrap();
+        assert_eq!(reloaded.entries.len(), 1);
+        assert_eq!(reloaded.entries[0].content, "Test memory content");
+
+        std::env::remove_var("HCSCODER_MEMORY_DIR");
     }
 }

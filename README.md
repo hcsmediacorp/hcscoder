@@ -10,7 +10,7 @@
 | Topic | Details |
 |--------|---------|
 | **Version** | **1.1.0-security** — Security hardening release ([CHANGELOG](CHANGELOG.md)) |
-| **Status** | ✅ **Stable Release** — Production ready |
+| **Status** | ✅ **Stable Core Release** — Core CLI + OpenRouter + primary tools are production ready |
 | **License** | MIT (c) 2026 **hcsmedia** — **attribution is mandatory** when you redistribute (see [LICENSE](LICENSE)). |
 | **Contact** | Instagram [@timfromhcs](https://www.instagram.com/timfromhcs/) · Email [hcsmediagroup@gmail.com](mailto:hcsmediagroup@gmail.com) |
 | **Repository** | [github.com/hcsmediacorp/hcscoder](https://github.com/hcsmediacorp/hcscoder) |
@@ -27,6 +27,22 @@
 - 🌐 **OpenRouter Compliant** — Full attribution headers, model catalog support
 - 🧠 **Smart Context** — Conversation memory with token estimation
 - 🎯 **Privacy Focused** — Zero telemetry, local API key storage
+
+---
+
+## Capability status (implemented vs experimental)
+
+| Area | Status | Notes |
+|------|--------|-------|
+| Core CLI (`chat`, `ask`, `run`, `review`, `status`, `init`) | ✅ Stable | Primary user flows are implemented and tested |
+| OpenRouter API + SSE streaming | ✅ Stable | Includes attribution headers and streaming parsing |
+| Filesystem / Bash / Git / Net tools | ✅ Stable | Security checks and tests included |
+| Memory persistence | ✅ Stable (JSON persistence) | Markdown export + JSON roundtrip persistence |
+| MCP integration | ⚠️ Experimental | Current module is a scaffold; runtime integration is pending |
+| REPL execution | ⚠️ Experimental | Session/history exists; evaluation is currently simulated |
+| Notebook cell execution | ⚠️ Experimental | Read/write works; execute requires kernel integration |
+
+Advanced modules marked **experimental** are included for forward compatibility, but should not be treated as production-complete yet.
 
 ---
 

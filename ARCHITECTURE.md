@@ -114,7 +114,7 @@ hcscoder is a privacy-first, Rust-native CLI coding assistant that interfaces wi
 
 **Features:**
 - Short-term memory (current session)
-- Long-term memory (persistent across sessions)
+- Long-term memory (persistent across sessions via JSON roundtrip storage)
 - Memory consolidation (planned)
 
 ### `hcscoder_planner`
@@ -124,6 +124,14 @@ hcscoder is a privacy-first, Rust-native CLI coding assistant that interfaces wi
 - Task breakdown
 - Progress tracking
 - Dependency management
+
+### Experimental modules (explicitly non-stable)
+
+- `hcscoder_tools::mcp` — scaffold for MCP server integration.
+- `hcscoder_tools::repl` — session + history implemented, code execution currently simulated.
+- `hcscoder_tools::notebook::execute_cell` — notebook execution requires kernel integration.
+
+These modules are intentionally shipped for forward compatibility and iterative hardening, but are not part of the stable core contract.
 
 ## Data Flow
 

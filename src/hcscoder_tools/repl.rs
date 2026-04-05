@@ -1,6 +1,7 @@
 //! hcscoder REPL Tool
 //!
 //! Read-Eval-Print Loop for interactive code execution.
+//! NOTE: Code execution is currently simulated (experimental).
 //! Zero telemetry, no phone-home logic.
 
 use anyhow::Result;
@@ -53,8 +54,12 @@ pub async fn repl_eval(code: &str) -> Result<String> {
 
     s.history.push(code.to_string());
 
-    // Placeholder - would need actual code execution engine
-    Ok(format!("Evaluated: {} ({} chars)", code, code.len()))
+    // Simulated execution until a sandboxed evaluator is integrated.
+    Ok(format!(
+        "Simulated eval (experimental): {} ({} chars)",
+        code,
+        code.len()
+    ))
 }
 
 /// Get REPL history
@@ -108,7 +113,7 @@ mod tests {
         assert!(start_result.contains("started"));
 
         let eval_result = repl_eval("let x = 5").await.unwrap();
-        assert!(eval_result.contains("Evaluated"));
+        assert!(eval_result.contains("Simulated eval"));
 
         let history = repl_history().await.unwrap();
         assert_eq!(history.len(), 1);

@@ -7,6 +7,7 @@ pub mod auth;
 pub mod client;
 pub mod models;
 
+use crate::hcscoder_tools::config::HcscoderConfig;
 use anyhow::{Context, Result};
 use dirs::home_dir;
 use serde::{Deserialize, Serialize};
@@ -155,7 +156,7 @@ impl HcscoderOpenRouterConfig {
     }
 
     /// Show current configuration status
-    pub fn show_status(_api_key: Option<String>, model: String) {
+    pub fn show_status(_api_key: Option<String>, model: String, config: &HcscoderConfig) {
         println!("🔧 hcscoder Configuration Status");
         println!("================================");
         println!();
@@ -171,7 +172,9 @@ impl HcscoderOpenRouterConfig {
 
         println!("API Key Source: {}", key_source);
         println!("Current Model:  {}", model);
+        println!("Model Source:   {}", resolve_model_source(config));
         println!("Base URL:       https://openrouter.ai/api/v1");
+        println!("Theme Source:   {}", resolve_theme_source(config));
         println!();
 
         // Model tier info
@@ -193,12 +196,36 @@ impl HcscoderOpenRouterConfig {
     }
 }
 
+fn resolve_model_source(config: &HcscoderConfig) -> &'static str {
+    if std::env::var("OPENROUTER_MODEL").is_ok() {
+        "Environment variable (OPENROUTER_MODEL)"
+    } else if config.model.is_some() && HcscoderConfig::exists() {
+        "Config file (~/.hcscoder/config.toml -> model)"
+    } else if HcscoderConfig::exists() {
+        "Config file (~/.hcscoder/config.toml -> openrouter.default_model)"
+    } else if HcscoderOpenRouterConfig::load_saved_model().is_some() {
+        "Saved model file (~/.hcscoder/openrouter_default_model)"
+    } else {
+        "Built-in default"
+    }
+}
+
+fn resolve_theme_source(config: &HcscoderConfig) -> &'static str {
+    if std::env::var("HCSCODER_THEME").is_ok() {
+        "Environment variable (HCSCODER_THEME)"
+    } else if config.theme.is_some() && HcscoderConfig::exists() {
+        "Config file (~/.hcscoder/config.toml -> theme)"
+    } else {
+        "Built-in or config default (~/.hcscoder/config.toml -> ui.theme)"
+    }
+}
+
 /// Initialize configuration (called from CLI)
 pub async fn init_config() -> Result<()> {
     HcscoderOpenRouterConfig::init_config().await
 }
 
 /// Show status (called from CLI)
-pub fn show_status(api_key: Option<String>, model: String) {
-    HcscoderOpenRouterConfig::show_status(api_key, model);
+pub fn show_status(api_key: Option<String>, model: String, config: &HcscoderConfig) {
+    HcscoderOpenRouterConfig::show_status(api_key, model, config);
 }
