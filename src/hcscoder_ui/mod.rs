@@ -96,6 +96,10 @@ fn security_posture_line() -> &'static str {
     "Security: validation + path traversal guard + command safety + audit logging"
 }
 
+fn runtime_status_line(model: &str, theme: UiTheme) -> String {
+    format!("Model: {model} | Theme: {theme:?}")
+}
+
 fn initial_conversation() -> Vec<ChatMessage> {
     vec![ChatMessage {
         role: MessageRole::System,
@@ -152,8 +156,10 @@ async fn run_plain_chat(
         env!("CARGO_PKG_VERSION")
     );
     println!("   {} | Stable Release", branding_line());
-    println!("Model: {}", client.model());
-    println!("Theme: {:?}", UiTheme::from_env());
+    println!(
+        "{}",
+        runtime_status_line(client.model(), UiTheme::from_env())
+    );
     println!("{}", security_posture_line());
     println!("Type 'quit', 'exit', 'clear', 'help', 'theme', or 'security' for commands");
     println!("{}", "─".repeat(60));
