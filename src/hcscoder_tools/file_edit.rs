@@ -137,17 +137,16 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_edit() {
-        let temp_path = "/tmp/hcscoder_edit_test.txt";
-        filesystem::write_file(temp_path, "Hello World")
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+        filesystem::write_file(&temp_path, "Hello World")
             .await
             .unwrap();
 
-        let result = apply_edit(temp_path, "World", "hcscoder").await.unwrap();
+        let result = apply_edit(&temp_path, "World", "hcscoder").await.unwrap();
         assert!(result.contains("Successfully edited"));
 
-        let content = filesystem::read_file(temp_path).await.unwrap();
+        let content = filesystem::read_file(&temp_path).await.unwrap();
         assert_eq!(content, "Hello hcscoder");
-
-        let _ = filesystem::delete_file(temp_path).await;
     }
 }

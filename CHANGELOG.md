@@ -22,16 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cross-platform CI builds (Windows, macOS, Linux)
 - cargo-audit integration in CI for security scanning
 - GitHub Actions benchmark workflow
+- `scripts/prebuild-packages.sh` for local release archive generation (`dist/*.tar.gz` or `.zip`)
 
 ### Changed
 - Enhanced CI pipeline with security auditing
 - Improved documentation structure
 - Updated CHANGELOG.md with new section format
+- Fully rewrote `README.md` with clearer install, UX, hardening, and packaging guidance
+- Improved chat UX: explicit security command, startup hardening line, and branded TUI footer
 
 ### Fixed
 - Missing community guidelines
 - Lack of testing infrastructure
 - No benchmark framework
+- Enforced default 60-second timeout in shell command execution path for safer runtime behavior
 
 ## [1.1.0-security] — 2026-04-03
 
