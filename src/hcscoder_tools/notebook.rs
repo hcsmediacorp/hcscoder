@@ -92,10 +92,10 @@ pub async fn write_notebook(notebook: &Notebook, path: &str) -> Result<()> {
     notebook.write(path).await
 }
 
-/// Execute a cell (placeholder - would need kernel integration)
+/// Execute a cell (experimental; requires kernel integration)
 pub async fn execute_cell(path: &str, cell_index: usize) -> Result<String> {
     Err(anyhow::anyhow!(
-        "Cell execution requires kernel integration. Path: {}, Cell: {}",
+        "Notebook cell execution is experimental and requires kernel integration. Path: {}, Cell: {}",
         path,
         cell_index
     ))
