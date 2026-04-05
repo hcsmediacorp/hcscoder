@@ -13,9 +13,9 @@
 use crate::hcscoder_engine::query_engine::{add_to_conversation, create_conversation};
 use crate::hcscoder_openrouter::client::{ChatMessage, HcscoderApiClient, MessageRole};
 use anyhow::Result;
+use futures_util::stream::StreamExt;
 use ratatui::backend::CrosstermBackend;
 use ratatui::{Frame, Terminal};
-use std::sync::Arc;
 use tokio::sync::mpsc;
 
 /// Available UI themes
@@ -94,7 +94,7 @@ fn plain_env_preferred() -> bool {
     if std::env::var_os("NO_COLOR").is_some() {
         return true;
     }
-    
+
     // Check for dumb terminal
     if std::env::var("TERM")
         .map(|t| t.eq_ignore_ascii_case("dumb"))
@@ -102,7 +102,7 @@ fn plain_env_preferred() -> bool {
     {
         return true;
     }
-    
+
     // Check for Termux (Android) - often has limited TUI support
     if std::env::var("PREFIX")
         .map(|p| p.contains("com.termux"))
@@ -110,7 +110,7 @@ fn plain_env_preferred() -> bool {
     {
         return true;
     }
-    
+
     false
 }
 
@@ -139,7 +139,10 @@ async fn run_plain_chat(
 
     // Print ASCII logo
     println!("{}", crate::LOGO_ASCII);
-    println!("🚀 hcscoder v{} - Interactive Chat", env!("CARGO_PKG_VERSION"));
+    println!(
+        "🚀 hcscoder v{} - Interactive Chat",
+        env!("CARGO_PKG_VERSION")
+    );
     println!("   Made with ❤️  by hcsmedia | Stable Release");
     println!("Model: {}", client.model());
     println!("Theme: {:?}", UiTheme::from_env());
@@ -244,7 +247,6 @@ async fn process_and_respond(
     user_input: &str,
     stdout: &mut tokio::io::Stdout,
 ) -> Result<()> {
-    use futures_util::stream::StreamExt;
     use tokio::io::AsyncWriteExt;
 
     // Add user message
@@ -263,7 +265,6 @@ async fn process_and_respond(
     .await?;
 
     let mut response = String::new();
-    let mut char_count = 0;
     tokio::pin!(stream);
 
     while let Some(chunk) = stream.next().await {
@@ -272,7 +273,6 @@ async fn process_and_respond(
                 stdout.write_all(text.as_bytes()).await?;
                 stdout.flush().await?;
                 response.push_str(&text);
-                char_count += text.len();
             }
             Err(e) => {
                 eprintln!("\n❌ Error: {}", e);
@@ -282,7 +282,7 @@ async fn process_and_respond(
     }
 
     // Add assistant response to history
-    add_to_conversation(messages, MessageRole::Assistant, response);
+    add_to_conversation(messages, MessageRole::Assistant, response.clone());
 
     // Show token usage info (rough estimate)
     let estimated_tokens = crate::hcscoder_engine::query_engine::estimate_tokens(&response);
@@ -336,8 +336,6 @@ async fn run_tui_chat(
 /// Message types for TUI communication
 #[derive(Debug, Clone)]
 enum TuiMessage {
-    UserInput(String),
-    AssistantResponse(String),
     Error(String),
     StreamingChunk(String),
     StreamingComplete,
@@ -408,16 +406,6 @@ impl TuiState {
         self.is_streaming = false;
         self.status_message = Some(format!("❌ {}", error));
     }
-
-    fn visible_messages(&self, max_height: usize) -> Vec<&ChatMessage> {
-        let skip = self.scroll_offset;
-        let user_messages: Vec<_> = self.messages.iter().skip(1).collect(); // Skip system
-        if skip >= user_messages.len() {
-            user_messages
-        } else {
-            user_messages.into_iter().take(max_height.min(user_messages.len() - skip)).collect()
-        }
-    }
 }
 
 async fn tui_main_loop(
@@ -427,7 +415,6 @@ async fn tui_main_loop(
     initial_prompt: Option<String>,
 ) -> Result<()> {
     use crossterm::event::{self, Event, KeyCode, KeyEventKind};
-    use futures_util::stream::StreamExt;
 
     let client = if let Some(key) = api_key {
         HcscoderApiClient::with_config(model, key, None)?
@@ -452,7 +439,14 @@ async fn tui_main_loop(
         let messages_clone = state.messages.clone();
 
         tokio::spawn(async move {
-            stream_response(tx_clone, client_clone, messages_clone, Some(0.7), Some(2000)).await;
+            stream_response(
+                tx_clone,
+                client_clone,
+                messages_clone,
+                Some(0.7),
+                Some(2000),
+            )
+            .await;
         });
         state.start_streaming();
     }
@@ -463,7 +457,7 @@ async fn tui_main_loop(
 
         // Poll for events with timeout
         let poll_duration = std::time::Duration::from_millis(50);
-        
+
         tokio::select! {
             // Handle keyboard events
             _ = tokio::task::spawn_blocking(move || {
@@ -553,17 +547,11 @@ async fn tui_main_loop(
                     TuiMessage::StreamingChunk(chunk) => {
                         state.append_chunk(chunk);
                     }
-                    TuiMessage::AssistantResponse(full_response) => {
-                        state.finish_streaming();
-                    }
                     TuiMessage::Error(error) => {
                         state.set_error(error);
                     }
                     TuiMessage::StreamingComplete => {
                         state.finish_streaming();
-                    }
-                    TuiMessage::UserInput(_) => {
-                        // Handled elsewhere
                     }
                 }
             }
@@ -579,7 +567,14 @@ async fn stream_response(
     temperature: Option<f32>,
     max_tokens: Option<u32>,
 ) {
-    match crate::hcscoder_engine::query_engine::stream_query(&client, messages, temperature, max_tokens).await {
+    match crate::hcscoder_engine::query_engine::stream_query(
+        &client,
+        messages,
+        temperature,
+        max_tokens,
+    )
+    .await
+    {
         Ok(stream) => {
             let mut stream = stream;
             while let Some(chunk) = stream.next().await {
@@ -606,9 +601,11 @@ async fn stream_response(
 fn ui(f: &mut Frame, state: &TuiState) {
     use ratatui::{
         layout::{Constraint, Direction, Layout},
-        style::{Color, Style, Modifier},
+        style::{Color, Modifier, Style},
         text::{Line, Span},
-        widgets::{Block, Borders, Paragraph, Wrap, Scrollbar, ScrollbarOrientation, ScrollbarState},
+        widgets::{
+            Block, Borders, Paragraph, Scrollbar, ScrollbarOrientation, ScrollbarState, Wrap,
+        },
     };
 
     let chunks = Layout::default()
@@ -629,7 +626,7 @@ fn ui(f: &mut Frame, state: &TuiState) {
             MessageRole::Assistant => "🤖 ",
             MessageRole::System => "",
         };
-        
+
         let role_style = match msg.role {
             MessageRole::User => Style::default()
                 .fg(state.theme.secondary_color())
@@ -639,7 +636,7 @@ fn ui(f: &mut Frame, state: &TuiState) {
                 .add_modifier(Modifier::BOLD),
             MessageRole::System => Style::default(),
         };
-        
+
         message_lines.push(Line::from(vec![
             Span::styled(prefix, role_style),
             Span::raw(msg.content.clone()),
@@ -656,11 +653,13 @@ fn ui(f: &mut Frame, state: &TuiState) {
 
     // Add status message if present
     if let Some(status) = &state.status_message {
-        message_lines.push(Line::from(vec![
-            Span::styled(status.clone(), Style::default().fg(state.theme.error_color())),
-        ]));
+        message_lines.push(Line::from(vec![Span::styled(
+            status.clone(),
+            Style::default().fg(state.theme.error_color()),
+        )]));
     }
 
+    let message_count = message_lines.len();
     let messages_widget = Paragraph::new(message_lines)
         .block(
             Block::default()
@@ -674,24 +673,19 @@ fn ui(f: &mut Frame, state: &TuiState) {
     f.render_widget(messages_widget, chunks[0]);
 
     // Render scrollbar if content is scrollable
-    if state.scroll_offset > 0 || message_lines.len() > chunks[0].height as usize {
+    if state.scroll_offset > 0 || message_count > chunks[0].height as usize {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("↑"))
             .end_symbol(Some("↓"));
-        let mut scrollbar_state = ScrollbarState::new(message_lines.len())
-            .position(state.scroll_offset);
-        f.render_stateful_widget(
-            scrollbar,
-            chunks[0],
-            &mut scrollbar_state,
-        );
+        let mut scrollbar_state = ScrollbarState::new(message_count).position(state.scroll_offset);
+        f.render_stateful_widget(scrollbar, chunks[0], &mut scrollbar_state);
     }
 
     // Input area with theme colors
     let input_title = if state.is_streaming {
         " ⏳ Streaming... (Up/Down to scroll) "
     } else {
-        " ✏️  Input (Enter to send, Ctrl+C to quit, ↑↓ scroll) ";
+        " ✏️  Input (Enter to send, Ctrl+C to quit, ↑↓ scroll) "
     };
 
     let input_style = if state.is_streaming {
