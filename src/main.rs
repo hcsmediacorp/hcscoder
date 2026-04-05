@@ -15,6 +15,7 @@ use hcscoder::hcscoder_openrouter;
 use hcscoder::hcscoder_openrouter::models;
 use hcscoder::hcscoder_openrouter::HcscoderOpenRouterConfig;
 use hcscoder::hcscoder_tools;
+use hcscoder::hcscoder_tools::config::HcscoderConfig;
 use hcscoder::hcscoder_ui;
 
 pub const CONTACT_INSTAGRAM: &str = "@timfromhcs";
@@ -162,30 +163,63 @@ async fn main() -> Result<()> {
         .init();
 
     let cli = Cli::parse();
+    let config = HcscoderConfig::load().unwrap_or_default();
+    let has_config_file = HcscoderConfig::exists();
 
     if cli.contact {
         print_contact();
         return Ok(());
     }
 
+    // Theme precedence: env > config.theme (legacy) > config.ui.theme
+    if has_config_file && std::env::var("HCSCODER_THEME").is_err() {
+        if let Some(theme) = config.theme.clone().or(Some(config.ui.theme.clone())) {
+            std::env::set_var("HCSCODER_THEME", theme);
+        }
+    }
+
+    let config_model = if has_config_file {
+        config
+            .model
+            .clone()
+            .or(Some(config.openrouter.default_model.clone()))
+    } else {
+        None
+    };
+
     let model = cli
         .model
+        .or(config_model)
         .or_else(HcscoderOpenRouterConfig::load_saved_model)
         .unwrap_or_else(|| models::get_default_model().to_string());
+    let api_key = cli.api_key.or_else(|| {
+        if has_config_file {
+            config.openrouter.api_key.clone()
+        } else {
+            None
+        }
+    });
 
     match cli.command {
         Some(Commands::Chat { prompt }) => {
-            hcscoder_ui::run_chat_interface(cli.api_key, model, prompt, cli.plain).await?;
-        }
-        Some(Commands::Ask { query }) => {
-            hcscoder_engine::handle_single_query(cli.api_key, model, &query, cli.plain).await?;
-        }
-        Some(Commands::Run { command }) => {
-            hcscoder_tools::execute_with_assistance(cli.api_key, model, &command, cli.plain)
+            hcscoder_ui::run_chat_interface(api_key.clone(), model.clone(), prompt, cli.plain)
                 .await?;
         }
+        Some(Commands::Ask { query }) => {
+            hcscoder_engine::handle_single_query(api_key.clone(), model.clone(), &query, cli.plain)
+                .await?;
+        }
+        Some(Commands::Run { command }) => {
+            hcscoder_tools::execute_with_assistance(
+                api_key.clone(),
+                model.clone(),
+                &command,
+                cli.plain,
+            )
+            .await?;
+        }
         Some(Commands::Review { path }) => {
-            hcscoder_engine::review_code(cli.api_key, model, &path, cli.plain).await?;
+            hcscoder_engine::review_code(api_key.clone(), model.clone(), &path, cli.plain).await?;
         }
         Some(Commands::Init) => {
             println!("{}", LOGO_ASCII);
@@ -213,10 +247,10 @@ async fn main() -> Result<()> {
             MemoryCommands::Export { path } => hcscoder_memory::export_memory(&path)?,
         },
         Some(Commands::Status) => {
-            hcscoder_openrouter::show_status(cli.api_key, model);
+            hcscoder_openrouter::show_status(api_key.clone(), model.clone(), &config);
         }
         None => {
-            hcscoder_ui::run_chat_interface(cli.api_key, model, None, cli.plain).await?;
+            hcscoder_ui::run_chat_interface(api_key, model, None, cli.plain).await?;
         }
     }
 

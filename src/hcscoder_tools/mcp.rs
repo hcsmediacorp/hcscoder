@@ -1,6 +1,7 @@
 //! hcscoder MCP (Model Context Protocol) Tool
 //!
 //! MCP server integration for resource access and tool discovery.
+//! NOTE: Current implementation is experimental and intentionally limited.
 //! Zero telemetry, no phone-home logic.
 
 use anyhow::Result;
@@ -41,22 +42,22 @@ pub enum McpServerStatus {
 
 /// List available MCP resources
 pub async fn list_mcp_resources() -> Result<Vec<McpResource>> {
-    // Placeholder implementation - would connect to actual MCP servers
+    // Experimental placeholder implementation - MCP runtime wiring pending
     Ok(vec![])
 }
 
 /// Read an MCP resource by URI
 pub async fn read_mcp_resource(uri: &str) -> Result<String> {
-    // Placeholder implementation
+    // Experimental placeholder implementation
     Err(anyhow::anyhow!(
-        "MCP resource not found or not implemented: {}",
+        "MCP resource not available (experimental feature): {}",
         uri
     ))
 }
 
 /// List available MCP tools from servers
 pub async fn list_mcp_tools() -> Result<Vec<McpTool>> {
-    // Placeholder implementation
+    // Experimental placeholder implementation
     Ok(vec![])
 }
 
@@ -65,16 +66,16 @@ pub async fn call_mcp_tool(
     tool_name: &str,
     _arguments: serde_json::Value,
 ) -> Result<serde_json::Value> {
-    // Placeholder implementation
+    // Experimental placeholder implementation
     Err(anyhow::anyhow!(
-        "MCP tool not found or not implemented: {}",
+        "MCP tool not available (experimental feature): {}",
         tool_name
     ))
 }
 
 /// Authenticate with an MCP server
 pub async fn mcp_auth(_server_id: &str, _credentials: &str) -> Result<()> {
-    // Placeholder implementation
+    // Experimental placeholder implementation
     Ok(())
 }
 

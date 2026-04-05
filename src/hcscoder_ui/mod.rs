@@ -146,17 +146,19 @@ async fn run_plain_chat(
     println!("   Made with ❤️  by hcsmedia | Stable Release");
     println!("Model: {}", client.model());
     println!("Theme: {:?}", UiTheme::from_env());
-    println!("Type 'quit', 'exit', 'clear', 'help', or 'theme' for commands");
+    println!("Type 'help' for commands. Tip: Use trailing '\\' for multiline input.");
     println!("{}", "─".repeat(60));
     println!();
 
     let mut stdin = BufReader::new(io::stdin());
     let mut stdout = io::stdout();
     let mut input = String::new();
+    let mut history = load_plain_history();
 
     // Handle initial prompt if provided
     if let Some(prompt) = initial_prompt {
         println!("👤 You: {}\n", prompt);
+        push_history_entry(&mut history, prompt.clone());
         process_and_respond(&client, &mut messages, &prompt, &mut stdout).await?;
         stdout.flush().await?;
     }
@@ -170,7 +172,22 @@ async fn run_plain_chat(
             break; // EOF
         }
 
-        let input = input.trim();
+        let mut input = input.trim().to_string();
+
+        // Multiline support with trailing backslash
+        while input.ends_with('\\') {
+            input.pop(); // remove '\'
+            let mut continuation = String::new();
+            print!("… ");
+            stdout.flush().await?;
+            if stdin.read_line(&mut continuation).await? == 0 {
+                break;
+            }
+            input.push('\n');
+            input.push_str(continuation.trim_end());
+        }
+
+        let input = input.trim().to_string();
 
         if input.is_empty() {
             continue;
@@ -181,13 +198,31 @@ async fn run_plain_chat(
             break;
         }
 
+        if input.eq_ignore_ascii_case("history") {
+            print_history(&history);
+            continue;
+        }
+
+        if let Some(rest) = input.strip_prefix('!') {
+            if let Ok(index) = rest.trim().parse::<usize>() {
+                if let Some(previous) = history.get(index.saturating_sub(1)) {
+                    println!("\n🔁 Replaying [{}]: {}\n", index, previous);
+                    process_and_respond(&client, &mut messages, previous, &mut stdout).await?;
+                    stdout.flush().await?;
+                    continue;
+                }
+            }
+            println!("\n⚠️  Invalid history reference. Use !<n> (see `history`).\n");
+            continue;
+        }
+
         if input.eq_ignore_ascii_case("clear") {
             messages.truncate(1); // Keep only system message
             println!("\n✅ Conversation cleared.\n");
             continue;
         }
 
-        if input.eq_ignore_ascii_case("help") {
+        if input.eq_ignore_ascii_case("help") || input == "/?" {
             println!("\n📖 Commands:");
             println!("  quit/exit  - End session");
             println!("  clear      - Clear conversation history");
@@ -196,6 +231,9 @@ async fn run_plain_chat(
             println!("  themes     - List available themes");
             println!("  model      - Show current model");
             println!("  status     - Show connection status");
+            println!("  history    - Show recent prompts");
+            println!("  !<n>       - Replay history entry");
+            println!("  multiline  - End line with '\\' to continue on next line");
             println!();
             continue;
         }
@@ -230,15 +268,91 @@ async fn run_plain_chat(
             println!("   Model: {}", client.model());
             println!("   Theme: {:?}", UiTheme::from_env());
             println!("   Messages in history: {}", messages.len());
+            println!("   Prompt history entries: {}", history.len());
             println!();
             continue;
         }
 
-        process_and_respond(&client, &mut messages, input, &mut stdout).await?;
+        push_history_entry(&mut history, input.clone());
+        process_and_respond(&client, &mut messages, &input, &mut stdout).await?;
         stdout.flush().await?;
     }
 
+    save_plain_history(&history)?;
+
     Ok(())
+}
+
+fn history_path() -> Option<std::path::PathBuf> {
+    if let Ok(path) = std::env::var("HCSCODER_HISTORY_FILE") {
+        return Some(std::path::PathBuf::from(path));
+    }
+
+    dirs::home_dir().map(|h| h.join(".hcscoder").join("history.txt"))
+}
+
+fn load_plain_history() -> Vec<String> {
+    let Some(path) = history_path() else {
+        return Vec::new();
+    };
+
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return Vec::new();
+    };
+
+    content
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn save_plain_history(history: &[String]) -> Result<()> {
+    let Some(path) = history_path() else {
+        return Ok(());
+    };
+
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let mut content = String::new();
+    for entry in history {
+        content.push_str(entry);
+        content.push('\n');
+    }
+
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+fn push_history_entry(history: &mut Vec<String>, input: String) {
+    const MAX_HISTORY: usize = 500;
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+
+    history.push(trimmed.to_string());
+    if history.len() > MAX_HISTORY {
+        let overflow = history.len() - MAX_HISTORY;
+        history.drain(0..overflow);
+    }
+}
+
+fn print_history(history: &[String]) {
+    println!("\n🕘 Recent prompts:");
+    if history.is_empty() {
+        println!("   (empty)\n");
+        return;
+    }
+
+    let start = history.len().saturating_sub(20);
+    for (idx, entry) in history.iter().enumerate().skip(start) {
+        println!("  {:>3}: {}", idx + 1, entry);
+    }
+    println!();
 }
 
 async fn process_and_respond(
@@ -711,4 +825,24 @@ fn ui(f: &mut Frame, state: &TuiState) {
         .style(input_style);
 
     f.render_widget(input_widget, chunks[1]);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::push_history_entry;
+
+    #[test]
+    fn history_is_capped_and_trims_empty_entries() {
+        let mut history = Vec::new();
+        push_history_entry(&mut history, "   ".to_string());
+        assert!(history.is_empty());
+
+        for i in 0..600 {
+            push_history_entry(&mut history, format!("item-{i}"));
+        }
+
+        assert_eq!(history.len(), 500);
+        assert_eq!(history.first().unwrap(), "item-100");
+        assert_eq!(history.last().unwrap(), "item-599");
+    }
 }
