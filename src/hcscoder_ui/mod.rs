@@ -10,7 +10,7 @@
 //! - Nord: Cool blue tones
 //! - HighContrast: Accessibility focused
 
-use crate::hcscoder_engine::query_engine::{add_to_conversation, create_conversation};
+use crate::hcscoder_engine::query_engine::add_to_conversation;
 use crate::hcscoder_openrouter::client::{ChatMessage, HcscoderApiClient, MessageRole};
 use anyhow::Result;
 use futures_util::stream::StreamExt;
@@ -96,6 +96,13 @@ fn security_posture_line() -> &'static str {
     "Security: validation + path traversal guard + command safety + audit logging"
 }
 
+fn initial_conversation() -> Vec<ChatMessage> {
+    vec![ChatMessage {
+        role: MessageRole::System,
+        content: crate::hcscoder_engine::query_engine::HCS_CODER_SYSTEM_PROMPT.to_string(),
+    }]
+}
+
 /// Prefer line-oriented I/O when color must be disabled or the terminal cannot host a TUI well.
 fn plain_env_preferred() -> bool {
     // Check for NO_COLOR environment variable
@@ -136,14 +143,7 @@ async fn run_plain_chat(
         HcscoderApiClient::new(model)?
     };
 
-    let mut messages = create_conversation("You are hcscoder, a helpful AI coding assistant.");
-
-    // Remove the default system message and add proper one
-    messages.clear();
-    messages.push(ChatMessage {
-        role: MessageRole::System,
-        content: crate::hcscoder_engine::query_engine::HCS_CODER_SYSTEM_PROMPT.to_string(),
-    });
+    let mut messages = initial_conversation();
 
     // Print ASCII logo
     println!("{}", crate::LOGO_ASCII);
@@ -372,12 +372,9 @@ struct TuiState {
 }
 
 impl TuiState {
-    fn new(system_prompt: String, theme: UiTheme) -> Self {
+    fn new(theme: UiTheme) -> Self {
         Self {
-            messages: vec![ChatMessage {
-                role: MessageRole::System,
-                content: system_prompt,
-            }],
+            messages: initial_conversation(),
             input_buffer: String::new(),
             response_buffer: String::new(),
             is_streaming: false,
@@ -442,10 +439,7 @@ async fn tui_main_loop(
     };
 
     let theme = UiTheme::from_env();
-    let mut state = TuiState::new(
-        crate::hcscoder_engine::query_engine::HCS_CODER_SYSTEM_PROMPT.to_string(),
-        theme,
-    );
+    let mut state = TuiState::new(theme);
 
     // Channel for streaming responses
     let (tx, mut rx) = mpsc::channel::<TuiMessage>(32);
@@ -479,20 +473,14 @@ async fn tui_main_loop(
 
         tokio::select! {
             // Handle keyboard events
-            _ = tokio::task::spawn_blocking(move || {
+            event_result = tokio::task::spawn_blocking(move || {
                 if event::poll(poll_duration).unwrap_or(false) {
                     event::read().ok()
                 } else {
                     None
                 }
             }) => {
-                if let Ok(Some(Event::Key(key))) = tokio::task::spawn_blocking(|| {
-                    if event::poll(std::time::Duration::from_millis(10)).unwrap_or(false) {
-                        event::read().ok()
-                    } else {
-                        None
-                    }
-                }).await {
+                if let Ok(Some(Event::Key(key))) = event_result {
                     // Only handle key press events (not release/repeat)
                     if key.kind != KeyEventKind::Press {
                         continue;
