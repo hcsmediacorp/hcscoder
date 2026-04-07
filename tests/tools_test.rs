@@ -1,18 +1,14 @@
 //! Unit tests for hcscoder_tools module
 
 use hcscoder::hcscoder_tools::{bash, filesystem};
-use tempfile::tempdir;
 
 #[tokio::test]
 async fn test_filesystem_write_and_read_roundtrip() {
-    let dir = tempdir().expect("tempdir");
-    let file_path = dir.path().join("note.txt");
-    let file_str = file_path.to_string_lossy().to_string();
-
-    filesystem::write_file(&file_str, "hello")
+    let file_path = "target/test-tools-roundtrip/note.txt";
+    filesystem::write_file(file_path, "hello")
         .await
         .expect("write file");
-    let content = filesystem::read_file(&file_str).await.expect("read file");
+    let content = filesystem::read_file(file_path).await.expect("read file");
 
     assert_eq!(content, "hello");
 }
@@ -27,9 +23,10 @@ async fn test_filesystem_rejects_null_byte_path() {
 
 #[tokio::test]
 async fn test_filesystem_search_files_matches_pattern() {
-    let dir = tempdir().expect("tempdir");
-    let root = dir.path();
-
+    let root = std::env::current_dir()
+        .expect("cwd")
+        .join("target/test-tools-search");
+    tokio::fs::create_dir_all(&root).await.expect("create root");
     tokio::fs::write(root.join("a.rs"), "fn main() {}")
         .await
         .expect("write a.rs");
@@ -37,7 +34,7 @@ async fn test_filesystem_search_files_matches_pattern() {
         .await
         .expect("write b.txt");
 
-    let matches = filesystem::search_files(&root.to_string_lossy(), "*.rs")
+    let matches = filesystem::search_files("target/test-tools-search", "*.rs")
         .await
         .expect("search files");
 

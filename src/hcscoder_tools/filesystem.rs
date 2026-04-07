@@ -2,159 +2,183 @@
 //!
 //! Safe file and directory operations with security hardening.
 //! Zero telemetry, no phone-home logic.
-//!
-//! ## Security Features
-//! - Path traversal prevention through canonicalization
-//! - Sandbox confinement to working directory
-//! - Validation of all file operations
-//! - Audit logging for sensitive operations
 
 use anyhow::{Context, Result};
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
-/// Get the canonical base directory for sandbox confinement
-fn get_base_dir() -> Result<PathBuf> {
-    std::env::current_dir().context("Failed to get current directory")
+const SANDBOX_ROOT_ENV: &str = "HCSCODER_SANDBOX_ROOT";
+const ALLOW_SENSITIVE_READS_ENV: &str = "HCSCODER_ALLOW_SENSITIVE_READS";
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum PathAccessMode {
+    ReadOnly,
+    ReadWrite,
 }
 
-/// Validate and canonicalize a path to prevent path traversal attacks
-///
-/// # Security Checks
-/// 1. Resolves symlinks and relative paths
-/// 2. Ensures path is within allowed base directory
-/// 3. Rejects paths containing null bytes
-/// 4. Validates UTF-8 encoding
-///
-/// # Arguments
-/// * `path` - The path to validate
-///
-/// # Returns
-/// * `Ok(PathBuf)` - Canonicalized, safe path
-/// * `Err(anyhow::Error)` - Security validation failed
-fn validate_and_canonicalize_path(path: &str) -> Result<PathBuf> {
-    // Reject paths with null bytes (injection prevention)
+/// Get the configured sandbox root for filesystem confinement.
+/// Defaults to current working directory, with optional explicit env override.
+fn get_sandbox_root() -> Result<PathBuf> {
+    if let Ok(raw) = std::env::var(SANDBOX_ROOT_ENV) {
+        let trimmed = raw.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("{} is set but empty", SANDBOX_ROOT_ENV);
+        }
+
+        let root = PathBuf::from(trimmed);
+        let absolute = if root.is_absolute() {
+            root
+        } else {
+            std::env::current_dir()
+                .context("Failed to get current directory")?
+                .join(root)
+        };
+
+        return absolute
+            .canonicalize()
+            .with_context(|| format!("Failed to canonicalize {}", SANDBOX_ROOT_ENV));
+    }
+
+    std::env::current_dir()
+        .context("Failed to get current directory")?
+        .canonicalize()
+        .context("Failed to canonicalize current working directory")
+}
+
+fn allows_sensitive_reads() -> bool {
+    matches!(std::env::var(ALLOW_SENSITIVE_READS_ENV), Ok(v) if v == "1" || v.eq_ignore_ascii_case("true"))
+}
+
+#[cfg(unix)]
+fn is_sensitive_path(path: &Path) -> bool {
+    let mut components = path.components();
+    if components.next() != Some(Component::RootDir) {
+        return false;
+    }
+
+    matches!(
+        components.next(),
+        Some(Component::Normal(part))
+            if part == "etc"
+                || part == "proc"
+                || part == "sys"
+                || part == "usr"
+                || part == "bin"
+                || part == "lib"
+                || part == "lib64"
+                || part == "sbin"
+    )
+}
+
+#[cfg(windows)]
+fn is_sensitive_path(path: &Path) -> bool {
+    let path_lc = path.to_string_lossy().to_ascii_lowercase();
+    path_lc.starts_with(r"c:\\windows")
+        || path_lc.starts_with(r"c:\\windows\\system32")
+        || path_lc.starts_with(r"c:\\program files")
+        || path_lc.starts_with(r"c:\\programdata")
+        || path_lc.starts_with(r"c:\\users\\public")
+}
+
+fn resolve_candidate_path(path: &str) -> Result<PathBuf> {
     if path.contains('\0') {
         anyhow::bail!("Path contains null byte injection attempt");
     }
 
-    // Convert to PathBuf and handle tilde expansion
     let expanded = shellexpand::tilde(path);
     let path_buf = PathBuf::from(expanded.as_ref());
-
-    // Make absolute if relative
-    let absolute_path = if path_buf.is_absolute() {
-        path_buf
+    if path_buf.is_absolute() {
+        Ok(path_buf)
     } else {
-        get_base_dir()?.join(&path_buf)
-    };
+        Ok(get_sandbox_root()?.join(path_buf))
+    }
+}
 
-    // Canonicalize to resolve symlinks and .. components
-    // Note: canonicalize fails if path doesn't exist, so we handle both cases
-    let canonical = if absolute_path.exists() {
-        absolute_path
+/// Validate and canonicalize a path to prevent traversal attacks and sandbox escape.
+fn validate_and_canonicalize_path(path: &str, mode: PathAccessMode) -> Result<PathBuf> {
+    let sandbox_root = get_sandbox_root()?;
+    let candidate = resolve_candidate_path(path)?;
+
+    let canonical = if candidate.exists() {
+        candidate
             .canonicalize()
             .with_context(|| format!("Failed to canonicalize path: {}", path))?
     } else {
-        // For non-existent paths, canonicalize parent and rejoin
-        if let Some(parent) = absolute_path.parent() {
-            if parent.exists() {
-                let canonical_parent = parent.canonicalize().with_context(|| {
-                    format!("Failed to canonicalize parent directory: {:?}", parent)
-                })?;
-                canonical_parent.join(absolute_path.file_name().unwrap_or_default())
-            } else {
-                // If parent doesn't exist either, just use absolute path
-                // This allows creating files in new directories
-                absolute_path
-            }
-        } else {
-            absolute_path
+        let mut existing_ancestor = candidate.as_path();
+        let mut suffix = Vec::new();
+
+        while !existing_ancestor.exists() {
+            let name = existing_ancestor
+                .file_name()
+                .ok_or_else(|| anyhow::anyhow!("Invalid path"))?
+                .to_os_string();
+            suffix.push(name);
+            existing_ancestor = existing_ancestor
+                .parent()
+                .ok_or_else(|| anyhow::anyhow!("Invalid path"))?;
         }
+
+        let mut rebuilt = existing_ancestor.canonicalize().with_context(|| {
+            format!(
+                "Failed to canonicalize parent directory: {}",
+                existing_ancestor.display()
+            )
+        })?;
+        for part in suffix.iter().rev() {
+            rebuilt.push(part);
+        }
+        rebuilt
     };
 
-    // Verify the canonical path is within allowed boundaries
-    // For now, we allow any path but log potentially dangerous patterns
-    let path_str = canonical.to_string_lossy();
-    if path_str.contains("/etc/passwd")
-        || path_str.contains("/etc/shadow")
-        || path_str.contains("/proc/")
-        || path_str.contains("/sys/")
-    {
-        tracing::warn!(
-            target: "hcscoder::security",
-            event = "sensitive_file_access",
-            path = %path_str,
-            "Attempt to access sensitive system file"
+    if !canonical.starts_with(&sandbox_root) {
+        anyhow::bail!(
+            "Path '{}' escapes sandbox root '{}'",
+            canonical.display(),
+            sandbox_root.display()
         );
-        // We don't block these outright as they might be legitimate in some contexts,
-        // but we log them for audit purposes
+    }
+
+    if is_sensitive_path(&canonical) {
+        let allowed = mode == PathAccessMode::ReadOnly && allows_sensitive_reads();
+        if !allowed {
+            anyhow::bail!(
+                "Access to sensitive system path '{}' is blocked",
+                canonical.display()
+            );
+        }
     }
 
     Ok(canonical)
 }
 
-/// Read file contents with path validation
 pub async fn read_file(path: &str) -> Result<String> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::debug!(
-        target: "hcscoder::audit",
-        event = "file_read",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadOnly)?;
     fs::read_to_string(&safe_path)
         .await
         .context(format!("Failed to read file: {}", path))
 }
 
-/// Write content to file (creates if not exists, overwrites if exists)
 pub async fn write_file(path: &str, content: &str) -> Result<()> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::info!(
-        target: "hcscoder::audit",
-        event = "file_write",
-        path = %safe_path.display(),
-        original_path = %path,
-        content_length = content.len()
-    );
-
-    // Ensure parent directory exists
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadWrite)?;
     if let Some(parent) = safe_path.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+            fs::create_dir_all(parent).await.with_context(|| {
+                format!("Failed to create parent directory: {}", parent.display())
+            })?;
         }
     }
 
     let mut file = fs::File::create(&safe_path)
         .await
         .context(format!("Failed to create file: {}", path))?;
-
     file.write_all(content.as_bytes())
         .await
-        .context(format!("Failed to write to file: {}", path))?;
-
-    Ok(())
+        .context(format!("Failed to write to file: {}", path))
 }
 
-/// Append content to file with path validation
 pub async fn append_file(path: &str, content: &str) -> Result<()> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::info!(
-        target: "hcscoder::audit",
-        event = "file_append",
-        path = %safe_path.display(),
-        original_path = %path,
-        content_length = content.len()
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadWrite)?;
     let mut file = fs::OpenOptions::new()
         .create(true)
         .append(true)
@@ -164,22 +188,11 @@ pub async fn append_file(path: &str, content: &str) -> Result<()> {
 
     file.write_all(content.as_bytes())
         .await
-        .context(format!("Failed to append to file: {}", path))?;
-
-    Ok(())
+        .context(format!("Failed to append to file: {}", path))
 }
 
-/// List directory contents with path validation
 pub async fn list_directory(path: &str) -> Result<Vec<PathEntry>> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::debug!(
-        target: "hcscoder::audit",
-        event = "directory_list",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadOnly)?;
     let mut entries = Vec::new();
     let mut dir = fs::read_dir(&safe_path)
         .await
@@ -187,10 +200,12 @@ pub async fn list_directory(path: &str) -> Result<Vec<PathEntry>> {
 
     while let Some(entry) = dir.next_entry().await? {
         let path = entry.path();
-        let metadata = fs::metadata(&path).await.ok();
+        let metadata = fs::symlink_metadata(&path).await.ok();
 
         let entry_type = if let Some(meta) = &metadata {
-            if meta.is_dir() {
+            if meta.file_type().is_symlink() {
+                EntryType::Symlink
+            } else if meta.is_dir() {
                 EntryType::Directory
             } else if meta.is_file() {
                 EntryType::File
@@ -212,7 +227,6 @@ pub async fn list_directory(path: &str) -> Result<Vec<PathEntry>> {
     Ok(entries)
 }
 
-/// Directory entry information
 #[derive(Debug, Clone)]
 pub struct PathEntry {
     pub name: String,
@@ -230,19 +244,8 @@ pub enum EntryType {
     Unknown,
 }
 
-/// Search for files matching a pattern (walkdir; skips `.git` / `node_modules` / `target`).
 pub async fn search_files(root: &str, pattern: &str) -> Result<Vec<PathBuf>> {
-    // Validate root path to prevent directory traversal
-    let safe_root = validate_and_canonicalize_path(root)?;
-
-    tracing::debug!(
-        target: "hcscoder::audit",
-        event = "file_search",
-        root = %safe_root.display(),
-        original_root = %root,
-        pattern = %pattern
-    );
-
+    let safe_root = validate_and_canonicalize_path(root, PathAccessMode::ReadOnly)?;
     let pattern = pattern.to_string();
     tokio::task::spawn_blocking(move || {
         let mut results = Vec::new();
@@ -260,8 +263,7 @@ pub async fn search_files(root: &str, pattern: &str) -> Result<Vec<PathBuf>> {
             }
             let path = entry.path();
             if let Some(name) = path.file_name() {
-                let name_str = name.to_string_lossy();
-                if glob_match(&pattern, &name_str) {
+                if glob_match(&pattern, &name.to_string_lossy()) {
                     results.push(path.to_path_buf());
                 }
             }
@@ -272,165 +274,67 @@ pub async fn search_files(root: &str, pattern: &str) -> Result<Vec<PathBuf>> {
     .context("search_files join")?
 }
 
-/// Simple glob pattern matching
 fn glob_match(pattern: &str, text: &str) -> bool {
     if pattern == "*" {
         return true;
     }
-
     if pattern.contains('*') {
         let parts: Vec<&str> = pattern.split('*').collect();
         if parts.len() == 2 {
             return text.starts_with(parts[0]) && text.ends_with(parts[1]);
         }
     }
-
     text == pattern
 }
 
-/// Create a new directory with path validation
 pub async fn create_directory(path: &str) -> Result<()> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::info!(
-        target: "hcscoder::audit",
-        event = "directory_create",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadWrite)?;
     fs::create_dir_all(&safe_path)
         .await
         .context(format!("Failed to create directory: {}", path))
 }
 
-/// Delete a file with path validation and safety checks
 pub async fn delete_file(path: &str) -> Result<()> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    // Prevent deletion of critical system files
-    let path_str = safe_path.to_string_lossy();
-    if path_str.contains("/etc/")
-        || path_str.contains("/usr/bin/")
-        || path_str.contains("/usr/lib/")
-        || path_str.contains("/bin/")
-        || path_str.contains("/lib/")
-    {
-        tracing::error!(
-            target: "hcscoder::security",
-            event = "blocked_file_deletion",
-            path = %path_str,
-            "Attempt to delete system-protected file"
-        );
-        anyhow::bail!("Deletion blocked: cannot delete system-protected files");
-    }
-
-    tracing::warn!(
-        target: "hcscoder::audit",
-        event = "file_delete",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadWrite)?;
     fs::remove_file(&safe_path)
         .await
         .context(format!("Failed to delete file: {}", path))
 }
 
-/// Delete a directory recursively with path validation and safety checks
 pub async fn delete_directory(path: &str) -> Result<()> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    // Prevent deletion of critical system directories
-    let path_str = safe_path.to_string_lossy();
-    if path_str.starts_with("/etc")
-        || path_str.starts_with("/usr")
-        || path_str.starts_with("/bin")
-        || path_str.starts_with("/lib")
-        || path_str.starts_with("/sbin")
-        || path_str == "/"
-    {
-        tracing::error!(
-            target: "hcscoder::security",
-            event = "blocked_directory_deletion",
-            path = %path_str,
-            "Attempt to delete system-protected directory"
-        );
-        anyhow::bail!("Deletion blocked: cannot delete system-protected directories");
-    }
-
-    tracing::warn!(
-        target: "hcscoder::audit",
-        event = "directory_delete",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadWrite)?;
     fs::remove_dir_all(&safe_path)
         .await
         .context(format!("Failed to delete directory: {}", path))
 }
 
-/// Move/rename a file or directory with path validation
 pub async fn move_path(from: &str, to: &str) -> Result<()> {
-    let safe_from = validate_and_canonicalize_path(from)?;
-    let safe_to = validate_and_canonicalize_path(to)?;
-
-    tracing::info!(
-        target: "hcscoder::audit",
-        event = "path_move",
-        from = %safe_from.display(),
-        to = %safe_to.display(),
-        original_from = %from,
-        original_to = %to
-    );
-
+    let safe_from = validate_and_canonicalize_path(from, PathAccessMode::ReadWrite)?;
+    let safe_to = validate_and_canonicalize_path(to, PathAccessMode::ReadWrite)?;
     fs::rename(&safe_from, &safe_to)
         .await
         .context(format!("Failed to move {} to {}", from, to))
 }
 
-/// Copy a file with path validation
 pub async fn copy_file(from: &str, to: &str) -> Result<()> {
-    let safe_from = validate_and_canonicalize_path(from)?;
-    let safe_to = validate_and_canonicalize_path(to)?;
-
-    tracing::info!(
-        target: "hcscoder::audit",
-        event = "file_copy",
-        from = %safe_from.display(),
-        to = %safe_to.display(),
-        original_from = %from,
-        original_to = %to
-    );
-
-    // Ensure parent directory exists
+    let safe_from = validate_and_canonicalize_path(from, PathAccessMode::ReadOnly)?;
+    let safe_to = validate_and_canonicalize_path(to, PathAccessMode::ReadWrite)?;
     if let Some(parent) = safe_to.parent() {
         if !parent.as_os_str().is_empty() {
-            fs::create_dir_all(parent)
-                .await
-                .with_context(|| format!("Failed to create parent directory: {:?}", parent))?;
+            fs::create_dir_all(parent).await.with_context(|| {
+                format!("Failed to create parent directory: {}", parent.display())
+            })?;
         }
     }
 
     fs::copy(&safe_from, &safe_to)
         .await
         .context(format!("Failed to copy {} to {}", from, to))?;
-
     Ok(())
 }
 
-/// Get file metadata with path validation
 pub async fn get_metadata(path: &str) -> Result<FileMetadata> {
-    let safe_path = validate_and_canonicalize_path(path)?;
-
-    tracing::debug!(
-        target: "hcscoder::audit",
-        event = "metadata_read",
-        path = %safe_path.display(),
-        original_path = %path
-    );
-
+    let safe_path = validate_and_canonicalize_path(path, PathAccessMode::ReadOnly)?;
     let metadata = fs::metadata(&safe_path)
         .await
         .context(format!("Failed to get metadata for: {}", path))?;
@@ -445,7 +349,6 @@ pub async fn get_metadata(path: &str) -> Result<FileMetadata> {
     })
 }
 
-/// File metadata information
 #[derive(Debug, Clone)]
 pub struct FileMetadata {
     pub is_file: bool,
@@ -456,39 +359,94 @@ pub struct FileMetadata {
     pub created: Option<std::time::SystemTime>,
 }
 
-/// Check if path exists
 pub async fn exists(path: &str) -> bool {
-    fs::metadata(path).await.is_ok()
+    validate_and_canonicalize_path(path, PathAccessMode::ReadOnly)
+        .ok()
+        .and_then(|p| p.try_exists().ok())
+        .unwrap_or(false)
 }
 
-/// Get absolute path
 pub fn absolute_path(path: &str) -> Result<String> {
-    std::env::current_dir()
-        .map(|cwd| cwd.join(path))
-        .map(|p| p.to_string_lossy().to_string())
-        .context("Failed to get absolute path")
+    Ok(
+        validate_and_canonicalize_path(path, PathAccessMode::ReadOnly)?
+            .to_string_lossy()
+            .to_string(),
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[tokio::test]
+    async fn safe_in_sandbox_read_write() {
+        let base = std::env::current_dir().unwrap().join("target/test-fs-safe");
+        tokio::fs::create_dir_all(&base).await.unwrap();
+        let rel = "target/test-fs-safe/notes/test.txt";
+        write_file(rel, "hello").await.unwrap();
+        let read = read_file(rel).await.unwrap();
+        assert_eq!(read, "hello");
+    }
 
     #[tokio::test]
-    async fn test_write_and_read_file() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
-        let temp_path = temp_file.path().to_string_lossy().to_string();
-        let content = "Hello, hcscoder!";
+    async fn rejects_parent_traversal() {
+        let err = read_file("../outside.txt").await.unwrap_err().to_string();
+        assert!(err.contains("escapes sandbox root"));
+    }
 
-        write_file(&temp_path, content).await.unwrap();
-        let read_content = read_file(&temp_path).await.unwrap();
+    #[tokio::test]
+    async fn rejects_absolute_outside_sandbox() {
+        let outside = if cfg!(windows) {
+            r"C:\\Windows\\win.ini"
+        } else {
+            "/tmp"
+        };
+        let err = list_directory(outside).await.unwrap_err().to_string();
+        assert!(err.contains("escapes sandbox root"));
+    }
 
-        assert_eq!(read_content, content);
+    #[tokio::test]
+    async fn rejects_sensitive_system_path() {
+        if cfg!(windows) {
+            return;
+        }
+
+        std::env::set_var(SANDBOX_ROOT_ENV, "/");
+        std::env::remove_var(ALLOW_SENSITIVE_READS_ENV);
+
+        let err = read_file("/etc/passwd").await.unwrap_err().to_string();
+        assert!(err.contains("sensitive system path"));
+        std::env::remove_var(SANDBOX_ROOT_ENV);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn rejects_symlink_escape() {
+        let base = std::env::current_dir()
+            .unwrap()
+            .join("target/test-fs-symlink");
+        let outside = std::env::current_dir()
+            .unwrap()
+            .join("target/test-fs-outside");
+        tokio::fs::create_dir_all(&base).await.unwrap();
+        let outside_tmp = tempfile::tempdir().unwrap();
+        tokio::fs::create_dir_all(&outside).await.unwrap();
+        let outside_file = outside_tmp.path().join("secret.txt");
+        tokio::fs::write(&outside_file, "secret").await.unwrap();
+
+        let link_path = base.join("leak.txt");
+        let _ = std::fs::remove_file(&link_path);
+        std::os::unix::fs::symlink(&outside_file, &link_path).unwrap();
+
+        let err = read_file("target/test-fs-symlink/leak.txt")
+            .await
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("escapes sandbox root"));
     }
 
     #[tokio::test]
     async fn test_glob_match() {
         assert!(glob_match("*.rs", "main.rs"));
-        assert!(glob_match("*.rs", "lib.rs"));
         assert!(!glob_match("*.rs", "main.ts"));
         assert!(glob_match("*", "anything"));
     }

@@ -44,8 +44,9 @@ impl HcscoderOpenRouterConfig {
                 .context("Failed to create hcscoder config directory")?;
         }
 
-        // Windows: ACL inherits from the user's home directory (typically user-private). Unix:
-        // `save_api_key` sets the key file to mode 0o600.
+        // Unix: `save_api_key` sets key file mode to 0o600.
+        // Windows: explicit ACL hardening is not implemented in this crate yet; file privacy
+        // depends on the user profile ACL defaults.
 
         Ok(config_dir)
     }
@@ -122,6 +123,11 @@ impl HcscoderOpenRouterConfig {
         Ok(())
     }
 
+    pub fn validate_init_api_key(key: &str) -> Result<()> {
+        crate::hcscoder_openrouter::auth::validate_api_key_strict(key)
+            .map_err(|e| anyhow::anyhow!("Invalid API key: {}", e))
+    }
+
     /// Initialize configuration interactively
     pub async fn init_config() -> Result<()> {
         use tokio::io::{self, AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -140,10 +146,7 @@ impl HcscoderOpenRouterConfig {
             anyhow::bail!("API key cannot be empty");
         }
 
-        // Basic validation
-        if key.len() < 20 {
-            anyhow::bail!("API key appears too short (minimum 20 characters)");
-        }
+        Self::validate_init_api_key(&key)?;
 
         Self::save_api_key(&key)?;
 
