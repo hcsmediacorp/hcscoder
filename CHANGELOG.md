@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Enhanced CI pipeline with security auditing
+- CI and release workflows now enforce `cargo fmt --all --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo test`, and `cargo build --release` as quality gates before release packaging
 - Improved documentation structure
 - Updated CHANGELOG.md with new section format
 
