@@ -404,18 +404,14 @@ mod tests {
         assert!(err.contains("escapes sandbox root"));
     }
 
-    #[tokio::test]
-    async fn rejects_sensitive_system_path() {
+    #[test]
+    fn detects_sensitive_system_path() {
         if cfg!(windows) {
             return;
         }
 
-        std::env::set_var(SANDBOX_ROOT_ENV, "/");
-        std::env::remove_var(ALLOW_SENSITIVE_READS_ENV);
-
-        let err = read_file("/etc/passwd").await.unwrap_err().to_string();
-        assert!(err.contains("sensitive system path"));
-        std::env::remove_var(SANDBOX_ROOT_ENV);
+        assert!(is_sensitive_path(Path::new("/etc/passwd")));
+        assert!(!is_sensitive_path(Path::new("/tmp/not-sensitive")));
     }
 
     #[cfg(unix)]

@@ -1,274 +1,129 @@
 # hcscoder
 
-**hcscoder** is a privacy-first, **Rust-native** CLI coding assistant powered by [OpenRouter](https://openrouter.ai/). It runs on your machine, stores API keys locally, and does **not** ship telemetry or phone-home analytics.
+Rust CLI for OpenRouter-based prompts with optional interactive chat UI.
 
-| Topic | Details |
-|--------|---------|
-| **Version** | **1.1.0-security** — Security hardening release ([CHANGELOG](CHANGELOG.md)) |
-| **Status** | ✅ **Stable Core Release** — core CLI and OpenRouter flows are production-ready; some advanced modules remain experimental |
-| **License** | MIT (c) 2026 **hcsmedia** — **attribution is mandatory** when you redistribute (see [LICENSE](LICENSE)). |
-| **Contact** | Instagram [@timfromhcs](https://www.instagram.com/timfromhcs/) · Email [hcsmediagroup@gmail.com](mailto:hcsmediagroup@gmail.com) |
-| **Repository** | [github.com/hcsmediacorp/hcscoder](https://github.com/hcsmediacorp/hcscoder) |
+## Scope of this repository
 
----
+`hcscoder` currently builds two binaries:
 
-## ✨ Features
+- `hcscoder` (main CLI)
+- `hcscoder-setup` (interactive setup helper for API key + default model)
 
-- 🔒 **Security First** — enforced filesystem sandboxing, strict API key validation, and safer default command execution
-- 🚀 **High Performance** — Built with Rust for speed and reliability
-- 🎨 **5 UI Themes** — Default, Dracula, Gruvbox, Nord, HighContrast
-- 🛠️ **40+ Tools** — Shell execution, filesystem operations, web search, git introspection, and more
-- 📡 **SSE Streaming** — Real-time AI responses with robust error handling
-- 🌐 **OpenRouter Compliant** — Full attribution headers, model catalog support
-- 🧠 **Smart Context** — Conversation memory with token estimation
-- 🎯 **Privacy Focused** — Zero telemetry, local API key storage
+The codebase includes additional modules (`memory`, `planner`, `buddy`, `tools`, `mcp`, `notebook`, `repl`) with unit tests. Some of these modules are scaffolding-oriented and not full external integrations yet.
 
----
+## Requirements
 
-## Capability status (implemented vs experimental)
+- Rust stable toolchain
+- OpenRouter API key for real model requests (`OPENROUTER_API_KEY`)
 
-| Area | Status | Notes |
-|------|--------|-------|
-| Core CLI (`chat`, `ask`, `run`, `review`, `status`, `init`) | ✅ Stable | Primary user flows are implemented and tested |
-| OpenRouter API + SSE streaming | ✅ Stable | Includes attribution headers and streaming parsing |
-| Filesystem / Bash / Git / Net tools | ✅ Stable | Filesystem sandbox enforcement + safer simple command execution with tests |
-| Memory persistence | ✅ Stable | JSON/Markdown persistence, clear/export CLI support, consolidation + deterministic dream synthesis |
-| MCP integration | ⚠️ Experimental | Current module is a scaffold; runtime integration is pending |
-| REPL execution | ⚠️ Experimental | Session/history exists; evaluation is currently simulated |
-| Notebook cell execution | ⚠️ Experimental | Read/write works; execute requires kernel integration |
+## Build and test
 
-Advanced modules marked **experimental** are included for forward compatibility, but should not be treated as production-complete yet.
-
----
-
-## One-click install (release binaries)
-
-**Prebuilt archives:** On each [release](https://github.com/hcsmediacorp/hcscoder/releases), download **`hcscoder-vX.Y.Z-windows-x86_64.zip`** (exes + `install.ps1`) or **`hcscoder-vX.Y.Z-linux-x86_64.tar.gz`** (ELF binaries + `install.sh`). These are produced by the [Release](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml) workflow.
-
-You can also grab **`hcscoder.exe`** / **`hcscoder-setup.exe`** from [`releases/`](releases/) on `main`, or use **latest** on the releases page.
-
-When release assets are on GitHub, you can use the installers (PATH + config template) via raw scripts:
-
-**Windows (PowerShell, run as Administrator only if you install system-wide):**
-
-```powershell
-Set-ExecutionPolicy -Scope CurrentUser -ExecutionPolicy RemoteSigned -Force
-iwr -useb https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.ps1 -OutFile install.ps1
-.\install.ps1 -Local
-# Optional: pin a release version (must exist on GitHub Releases):
-# .\install.ps1 -Local -Version 1.1.0
-```
-
-**Linux / macOS:**
+Run exactly the same checks used in CI:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.sh | bash
-# User install (no sudo):
-curl -fsSL https://raw.githubusercontent.com/hcsmediacorp/hcscoder/main/install.sh | bash -s -- --local
-```
-
-Then set your OpenRouter API key and run `hcscoder-setup` or `export OPENROUTER_API_KEY=...` as described below.
-
-**Prefer building from source (100% Rust, always up to date)?** Use [Quick start](#quick-start-build-from-source) — no Node.js required.
-
----
-
-## What you get
-
-- **OpenRouter** chat completions and **SSE streaming** with line-buffered parsing, comment lines (`:`) ignored, and handling for **mid-stream error payloads** (HTTP 200 with `error` in JSON, per OpenRouter docs).
-- **Attribution headers** on every request: `HTTP-Referer`, `X-Title`, `X-OpenRouter-Title`, optional `X-OpenRouter-Categories` (`cli-agent`), plus a clear `User-Agent`.
-- **Configurable model**: CLI `--model` → `OPENROUTER_MODEL` → `~/.hcscoder/openrouter_default_model` (from **hcscoder-setup**) → built-in default.
-- **Secure API key setup**: `hcscoder-setup` uses a **hidden password-style prompt** (key not echoed) and writes `~/.hcscoder/openrouter_api_key` (Unix: mode `600`).
-- **Enhanced Security** (v1.1.0):
-  - Advanced API key validation with entropy checking
-  - Enforced sandbox root confinement (default current working directory; optional explicit override)
-  - Sensitive system path blocking (with explicit read-only opt-in)
-  - Safer default simple-command execution and hardened shell validation
-  - Strict API key format/length/entropy validation with actionable errors
-
----
-
-## Prerequisites
-
-1. **Rust toolchain** (stable): install from [rustup.rs](https://rustup.rs/).
-2. An **OpenRouter API key** from [openrouter.ai/keys](https://openrouter.ai/keys).
-
----
-
-## Quick start (build from source)
-
-This is the recommended path for developers and for **100% Rust** workflows.
-
-### Windows (PowerShell)
-
-```powershell
-# Install Rust if needed: https://rustup.rs/
-rustup default stable
-
-git clone https://github.com/hcsmediacorp/hcscoder.git
-cd hcscoder
-
+cargo fmt --all --check
+cargo clippy --all-targets --all-features -- -D warnings
+cargo test
 cargo build --release
-.\target\release\hcscoder-setup.exe
-.\target\release\hcscoder.exe --contact
-.\target\release\hcscoder.exe chat --plain
 ```
 
-The project builds two Windows executables: **`hcscoder-setup.exe`** (first-time key + model) and **`hcscoder.exe`** (all CLI commands). For interactive chat with full **SSE streaming**, prefer **`hcscoder chat --plain`** (line-oriented I/O). The full-screen **ratatui** UI is optional; you can also force plain mode with **`NO_COLOR=1`** or **`TERM=dumb`**.
-
-Add `target\release` to your PATH if you want to run `hcscoder` from anywhere, or install into Cargo’s bin:
-
-```powershell
-cargo install --path . --locked
-hcscoder-setup
-hcscoder chat
-```
-
-### Linux (bash)
-
-```bash
-curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
-source "$HOME/.cargo/env"
-
-git clone https://github.com/hcsmediacorp/hcscoder.git
-cd hcscoder
-cargo build --release
-./target/release/hcscoder-setup
-./target/release/hcscoder --contact
-./target/release/hcscoder chat --plain
-```
-
-Optional global install:
+## Install (local)
 
 ```bash
 cargo install --path . --locked
-hcscoder-setup
-hcscoder chat
 ```
 
-### macOS (zsh or bash)
+This installs:
 
-Same as Linux: install Rust via rustup, clone the repo, `cargo build --release`, then run `hcscoder-setup` and `hcscoder`.
-
-**Apple Silicon note:** Rust targets `aarch64-apple-darwin` by default on M1/M2/M3; no extra steps when building locally.
-
----
+- `hcscoder`
+- `hcscoder-setup`
 
 ## Configuration
 
-| Method | Description |
-|--------|-------------|
-| **Environment** | `OPENROUTER_API_KEY`, `OPENROUTER_MODEL` |
-| **Key file** | `~/.hcscoder/openrouter_api_key` (written by `hcscoder-setup` or `hcscoder init`) |
-| **Default model file** | `~/.hcscoder/openrouter_default_model` (one line, model id — written by `hcscoder-setup`) |
+### API key
 
-Priority for the **model** id: **`--model`** → **`OPENROUTER_MODEL`** → **saved default file** → **catalog default** (`anthropic/claude-3.5-haiku`).
+Priority:
 
----
+1. `--api-key` CLI flag
+2. `OPENROUTER_API_KEY` environment variable
+3. `~/.hcscoder/openrouter_api_key` file
 
-## Free vs paid models (OpenRouter)
+### Model
 
-- **Free** — OpenRouter lists models with **`:free`** in the id (no per-request metered charge on that tier; **rate limits** still apply). Example in hcscoder: `meta-llama/llama-3.1-8b-instruct:free`.
-- **Paid / usage-based** — All other routed models bill per your OpenRouter balance and the model’s page pricing (no `:free` suffix).
-- **How hcscoder picks a model** — `hcscoder-setup` tier choice writes `~/.hcscoder/openrouter_default_model`. At runtime: **`--model`** overrides **`OPENROUTER_MODEL`**, which overrides that file, which overrides the catalog default (`anthropic/claude-3.5-haiku`).
+Priority:
 
-Curated reference list: `hcscoder_openrouter::models::MODEL_CATALOG`. **Confirm** every id on [openrouter.ai/models](https://openrouter.ai/models) before production.
+1. `--model` CLI flag
+2. `OPENROUTER_MODEL` environment variable
+3. `~/.hcscoder/openrouter_default_model` file
+4. Built-in default model from catalog
 
----
+## CLI quick reference
 
-## Commands (overview)
+```text
+hcscoder [OPTIONS] [COMMAND]
 
-| Command | Purpose |
-|---------|---------|
-| `hcscoder` | Interactive chat (default) |
-| `hcscoder chat` | Same, optional initial prompt |
-| `hcscoder ask "<query>"` | Single-shot question |
-| `hcscoder review <path>` | Code review helper |
-| `hcscoder run "<cmd>"` | Shell command with AI commentary |
-| `hcscoder status` | Show config / model source |
-| `hcscoder init` | Async API key prompt (TTY) |
-| `hcscoder-setup` | Interactive **secure** key + default model |
-| `hcscoder --contact` | Attribution / contact info |
-
----
-
-## Automated installers (optional)
-
-If you use **prebuilt release binaries** from GitHub (when available):
-
-- **Windows:** run `install.ps1` (see script header for `iwr ... | iex` style usage). It downloads the release, places the binary, and **fixes a user PATH** entry. A default TOML template is created under `%APPDATA%\hcscoder\config\`.
-- **Linux / macOS:** run `install.sh` with optional `--local` or `--version X.Y.Z`.
-
-Building **from source** with `cargo install --path .` remains the most portable approach when releases are missing or you need the latest `main`.
-
----
-
-## Development
-
-```bash
-cargo check
-cargo test --lib
-cargo build --release
+Commands:
+  chat    Interactive coding session
+  ask     Run a single query and exit
+  run     Execute a shell command with AI assistance
+  review  Analyze and improve code
+  init    Initialize hcscoder configuration
+  buddy   Manage Buddy companions
+  memory  View and manage memory
+  status  Display system status and configuration
 ```
 
-The library crate is built with **`#![deny(warnings)]`** — keep the tree warning-free.
+Examples:
 
-### GitHub Releases (maintainers)
+```bash
+hcscoder status
+hcscoder ask "Explain ownership in Rust"
+hcscoder --plain chat "Say hello in one sentence"
+hcscoder --model meta-llama/llama-3.1-8b-instruct:free ask "Give me a short tip"
+```
 
-- **Automatic:** Pushing a new annotated tag `v*` on `main` triggers **Release** — it builds Windows + Linux binaries and creates/updates the GitHub Release with archives.
-- **Manual (e.g. first time for an old tag):** [Actions → Release](https://github.com/hcsmediacorp/hcscoder/actions/workflows/release.yml) → **Run workflow** → set tag to `v1.0.0` (must already exist) → Run. This publishes the same zip/tar.gz assets without re-tagging.
+## OpenRouter usage notes
 
-### Git / VS Code: `Repository not found` on push
+- Requests use OpenRouter chat completions API.
+- Streaming is supported in chat flows.
+- Provider/rate-limit errors are surfaced as CLI errors.
+- Use `:free` models if you only want free-tier catalog entries.
 
-If `git push -u origin main` fails with **remote: Repository not found**, the problem is not your local tree—it is the **GitHub side or authentication**:
+## Repository structure
 
-1. **Create the repository** on GitHub (e.g. [github.com/new](https://github.com/new)) under the account/org you use. Name it `hcscoder` (or your chosen name). **Do not** initialize with a README/license if you are pushing this repo’s existing history for the first time.
-2. **Match the remote URL** to that repo:
+- `src/main.rs` – main CLI and command dispatch
+- `src/bin/hcscoder-setup.rs` – interactive setup binary
+- `src/hcscoder_openrouter/` – auth, model catalog, HTTP + streaming client
+- `src/hcscoder_ui/` – plain and TUI chat interfaces
+- `src/hcscoder_tools/` – tool modules (filesystem, bash, web, etc.)
+- `.github/workflows/ci.yml` – lint/test/build pipeline
+- `.github/workflows/release.yml` – tag-based release pipeline
 
-   ```bash
-   git remote set-url origin https://github.com/<OWNER>/hcscoder.git
-   ```
+## CI workflows
 
-3. **Authenticate:** On Windows, sign in when Git Credential Manager prompts you, or use a [personal access token](https://github.com/settings/tokens) with **repo** scope for HTTPS. Alternatively switch to SSH:
+### CI (`.github/workflows/ci.yml`)
 
-   ```bash
-   git remote set-url origin git@github.com:<OWNER>/hcscoder.git
-   ```
+On pushes/PRs to `main` and `master`:
 
-4. Push branch and tag:
+- `cargo fmt --all --check`
+- `cargo clippy --all-targets --all-features -- -D warnings`
+- `cargo test`
+- `cargo build --release`
+- `cargo audit`
+- extra cross-platform release builds on Windows/macOS
 
-   ```bash
-   git push -u origin main
-   git push origin v1.0.0
-   ```
+### Release (`.github/workflows/release.yml`)
 
-This repo sets **`push.autoSetupRemote = true`** locally so a plain `git push` can set upstream once the remote exists and credentials work.
+On `v*` tags or manual dispatch:
 
----
+- runs the same Rust quality gate checks
+- builds release binaries on Linux + Windows
+- uploads release archives to GitHub Releases
 
-## Architecture (Rust)
+## Security and sandboxing
 
-| Path | Role |
-|------|------|
-| `src/main.rs` | CLI entry, `OPENROUTER_MODEL` resolution |
-| `src/lib.rs` | Library: buddy, engine, memory, openrouter, planner, tools, UI |
-| `src/hcscoder_openrouter/client.rs` | HTTP + SSE, retries, attribution headers |
-| `src/hcscoder_openrouter/models.rs` | Model catalog & tiers |
-| `src/hcscoder_engine/tool_runtime.rs` | Tool registry → implementations |
-| `src/hcscoder_tools/` | Tool implementations |
+Filesystem helpers enforce sandbox-style path validation relative to a sandbox root (`HCSCODER_SANDBOX_ROOT`, default: current working directory). Sensitive system paths are explicitly guarded.
 
----
+## License
 
-## OpenRouter compliance (summary)
-
-- **POST** `https://openrouter.ai/api/v1/chat/completions` with `Authorization: Bearer …`, `Content-Type: application/json`.
-- **Streaming:** `stream: true`; parse SSE `data:` lines; ignore `:` comments; handle `[DONE]`; tolerate **JSON parse errors** on noise; **surface errors** in the JSON payload (`error` and `finish_reason: error`).
-- **Attribution:** `HTTP-Referer`, `X-OpenRouter-Title` / `X-Title`, optional `X-OpenRouter-Categories`.
-
-See the official docs: [Chat completion](https://openrouter.ai/docs/api-reference/chat-completion), [Streaming](https://openrouter.ai/docs/api/reference/streaming), [App attribution](https://openrouter.ai/docs/app-attribution).
-
----
-
-## Legal
-
-MIT License — see [LICENSE](LICENSE). Redistributions must retain copyright and license text and credit **hcsmedia** as required.
+MIT. See `LICENSE`.
