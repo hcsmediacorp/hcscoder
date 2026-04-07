@@ -173,6 +173,7 @@ pub struct HcscoderConfig {
     pub custom: HashMap<String, serde_json::Value>,
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for HcscoderConfig {
     fn default() -> Self {
         Self {
@@ -250,6 +251,7 @@ impl Default for MemoryConfig {
     }
 }
 
+#[allow(clippy::derivable_impls)]
 impl Default for PerformanceConfig {
     fn default() -> Self {
         Self {

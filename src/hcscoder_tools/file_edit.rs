@@ -137,8 +137,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_apply_edit() {
-        let temp_file = tempfile::NamedTempFile::new().unwrap();
-        let temp_path = temp_file.path().to_string_lossy().to_string();
+        let temp_path = std::env::current_dir()
+            .unwrap()
+            .join("target/test-file-edit-note.txt")
+            .to_string_lossy()
+            .to_string();
         filesystem::write_file(&temp_path, "Hello World")
             .await
             .unwrap();

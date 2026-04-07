@@ -5,7 +5,7 @@
 | Topic | Details |
 |--------|---------|
 | **Version** | **1.1.0-security** — Security hardening release ([CHANGELOG](CHANGELOG.md)) |
-| **Status** | ✅ **Stable Core Release** — Core CLI + OpenRouter + primary tools are production ready |
+| **Status** | ✅ **Stable Core Release** — core CLI and OpenRouter flows are production-ready; some advanced modules remain experimental |
 | **License** | MIT (c) 2026 **hcsmedia** — **attribution is mandatory** when you redistribute (see [LICENSE](LICENSE)). |
 | **Contact** | Instagram [@timfromhcs](https://www.instagram.com/timfromhcs/) · Email [hcsmediagroup@gmail.com](mailto:hcsmediagroup@gmail.com) |
 | **Repository** | [github.com/hcsmediacorp/hcscoder](https://github.com/hcsmediacorp/hcscoder) |
@@ -14,7 +14,7 @@
 
 ## ✨ Features
 
-- 🔒 **Security First** — Enhanced API key validation, path traversal prevention, command injection protection
+- 🔒 **Security First** — enforced filesystem sandboxing, strict API key validation, and safer default command execution
 - 🚀 **High Performance** — Built with Rust for speed and reliability
 - 🎨 **5 UI Themes** — Default, Dracula, Gruvbox, Nord, HighContrast
 - 🛠️ **40+ Tools** — Shell execution, filesystem operations, web search, git introspection, and more
@@ -31,8 +31,8 @@
 |------|--------|-------|
 | Core CLI (`chat`, `ask`, `run`, `review`, `status`, `init`) | ✅ Stable | Primary user flows are implemented and tested |
 | OpenRouter API + SSE streaming | ✅ Stable | Includes attribution headers and streaming parsing |
-| Filesystem / Bash / Git / Net tools | ✅ Stable | Security checks and tests included |
-| Memory persistence | ✅ Stable (JSON persistence) | Markdown export + JSON roundtrip persistence |
+| Filesystem / Bash / Git / Net tools | ✅ Stable | Filesystem sandbox enforcement + safer simple command execution with tests |
+| Memory persistence | ✅ Stable | JSON/Markdown persistence, clear/export CLI support, consolidation + deterministic dream synthesis |
 | MCP integration | ⚠️ Experimental | Current module is a scaffold; runtime integration is pending |
 | REPL execution | ⚠️ Experimental | Session/history exists; evaluation is currently simulated |
 | Notebook cell execution | ⚠️ Experimental | Read/write works; execute requires kernel integration |
@@ -81,10 +81,10 @@ Then set your OpenRouter API key and run `hcscoder-setup` or `export OPENROUTER_
 - **Secure API key setup**: `hcscoder-setup` uses a **hidden password-style prompt** (key not echoed) and writes `~/.hcscoder/openrouter_api_key` (Unix: mode `600`).
 - **Enhanced Security** (v1.1.0):
   - Advanced API key validation with entropy checking
-  - Path traversal prevention for all filesystem operations
-  - Command injection protection
-  - Comprehensive audit logging
-  - System file protection
+  - Enforced sandbox root confinement (default current working directory; optional explicit override)
+  - Sensitive system path blocking (with explicit read-only opt-in)
+  - Safer default simple-command execution and hardened shell validation
+  - Strict API key format/length/entropy validation with actionable errors
 
 ---
 
