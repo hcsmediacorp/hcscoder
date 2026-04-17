@@ -61,7 +61,7 @@ anyhow = "1.0"
 rpassword = "7"
 
 # Random Number Generation (for Buddy Gacha)
-rand = "0.8"
+rand = "0.10"
 rand_chacha = "0.3"
 
 # Time Handling
