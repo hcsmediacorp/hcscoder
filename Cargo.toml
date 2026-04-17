@@ -42,7 +42,7 @@ rustyline = "13.0"
 
 # Cryptography & Security
 ring = "0.17"
-base64 = "0.21"
+base64 = "0.22"
 zeroize = "1.7"
 
 # File System & Watching
