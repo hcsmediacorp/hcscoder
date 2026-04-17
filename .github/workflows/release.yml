@@ -58,7 +58,7 @@ jobs:
       - name: cargo build --release
         run: cargo build --release
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: windows-amd64
           path: |
@@ -86,7 +86,7 @@ jobs:
       - name: Strip binaries
         run: strip target/release/hcscoder target/release/hcscoder-setup || true
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: linux-amd64
           path: |
